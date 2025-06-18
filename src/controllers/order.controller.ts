@@ -204,7 +204,7 @@ export const getOrders = async (req: Request, res: Response) => {
     const orders = await Order.find(query)
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city"
+        "customerNumber name street houseNumber postalCode city email mobileNumber"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure")
       .populate(
@@ -224,10 +224,13 @@ export const getOrderById = async (req: Request, res: Response) => {
     const order = await Order.findById(req.params.id)
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city"
+        "customerNumber name street houseNumber postalCode city email mobileNumber"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure")
-      .populate("assignedDriver", "firstName lastName");
+      .populate(
+        "assignedDriver",
+        "name street houseNumber postalCode city driverNumber email mobileNumber"
+      );
 
     if (!order) {
       return res.status(404).json({ error: "Order not found" });

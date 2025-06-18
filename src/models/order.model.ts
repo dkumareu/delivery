@@ -1,7 +1,7 @@
 import mongoose, { Document, Schema } from "mongoose";
 import { ICustomer } from "./customer.model";
 import { IItem } from "./item.model";
-import { IUser } from "./user.model";
+import { IDriver } from "./driver.model";
 
 export enum PaymentMethod {
   CASH = "cash",
@@ -47,10 +47,12 @@ export interface IOrder extends Document {
   startDate: Date;
   endDate?: Date;
   frequency?: Frequency;
-  assignedDriver?: IUser["_id"];
+  assignedDriver?: IDriver["_id"];
   status: OrderStatus;
   totalNetAmount: number;
   totalGrossAmount: number;
+  mainOrder: boolean;
+  originalOrderNumber?: string;
 }
 
 const orderItemSchema = new Schema<IOrderItem>({
@@ -122,7 +124,7 @@ const orderSchema = new Schema<IOrder>(
     },
     assignedDriver: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Driver",
     },
     status: {
       type: String,
@@ -139,6 +141,14 @@ const orderSchema = new Schema<IOrder>(
       required: true,
       min: 0,
     },
+    mainOrder: {
+      type: Boolean,
+      default: false,
+    },
+    originalOrderNumber: {
+      type: String,
+      trim: true,
+    },
   },
   {
     timestamps: true,
@@ -150,5 +160,7 @@ orderSchema.index({ customer: 1 });
 orderSchema.index({ startDate: 1 });
 orderSchema.index({ assignedDriver: 1 });
 orderSchema.index({ status: 1 });
+orderSchema.index({ mainOrder: 1 });
+orderSchema.index({ originalOrderNumber: 1 });
 
 export const Order = mongoose.model<IOrder>("Order", orderSchema);

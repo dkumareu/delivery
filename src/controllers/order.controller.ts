@@ -10,6 +10,66 @@ import { Customer, CustomerStatus } from "../models/customer.model";
 import { Item } from "../models/item.model";
 import { Driver } from "../models/driver.model";
 
+const generateOrderNumber = async (year: number) => {
+  const lastOrder = await Order.findOne({
+    orderNumber: new RegExp(`A-${year}-`),
+  }).sort({ orderNumber: -1 });
+
+  let sequence = 1;
+  if (lastOrder) {
+    const lastSequence = parseInt(lastOrder.orderNumber.split("-")[2]);
+    sequence = lastSequence + 1;
+  }
+
+  return `A-${year}-${sequence.toString().padStart(4, "0")}`;
+};
+
+const generateRecurringDates = (
+  startDate: Date,
+  endDate: Date,
+  frequency: Frequency
+) => {
+  const dates: Date[] = [];
+  let currentDate = new Date(startDate);
+
+  while (currentDate <= endDate) {
+    dates.push(new Date(currentDate));
+
+    switch (frequency) {
+      case "daily":
+        currentDate.setDate(currentDate.getDate() + 1);
+        break;
+      case "weekdays":
+        currentDate.setDate(currentDate.getDate() + 1);
+        // Skip weekends
+        while (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        break;
+      case "weekly":
+        currentDate.setDate(currentDate.getDate() + 7);
+        break;
+      case "biweekly":
+        currentDate.setDate(currentDate.getDate() + 14);
+        break;
+      case "monthly":
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        break;
+      case "quarterly":
+        currentDate.setMonth(currentDate.getMonth() + 3);
+        break;
+      case "semi_annually":
+        currentDate.setMonth(currentDate.getMonth() + 6);
+        break;
+      case "annually":
+        currentDate.setFullYear(currentDate.getFullYear() + 1);
+        break;
+    }
+  }
+
+  return dates;
+};
+
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const {
@@ -36,7 +96,6 @@ export const createOrder = async (req: Request, res: Response) => {
     // Validate items and calculate totals
     const processedItems = await Promise.all(
       items.map(async (item: any) => {
-        // Validate item exists and is active
         const itemDoc = await Item.findById(item.item._id);
         if (!itemDoc) {
           throw new Error(`Item ${item.item._id} not found`);
@@ -56,46 +115,49 @@ export const createOrder = async (req: Request, res: Response) => {
       })
     );
 
-    // Generate order number (A-YYYY-XXXX)
-    const year = new Date().getFullYear();
-    const lastOrder = await Order.findOne({
-      orderNumber: new RegExp(`A-${year}-`),
-    }).sort({ orderNumber: -1 });
+    // Generate recurring dates
+    const deliveryDates = generateRecurringDates(
+      new Date(startDate),
+      new Date(endDate),
+      frequency
+    );
 
-    let sequence = 1;
-    if (lastOrder) {
-      const lastSequence = parseInt(lastOrder.orderNumber.split("-")[2]);
-      sequence = lastSequence + 1;
+    // Create orders for each delivery date
+    const createdOrders = [];
+
+    const orderNumber = await generateOrderNumber(new Date().getFullYear());
+    for (let i = 0; i < deliveryDates.length; i++) {
+      const order = new Order({
+        orderNumber,
+        customer: customerDoc._id,
+        items: processedItems,
+        paymentMethod,
+        driverNote,
+        startDate: deliveryDates[i],
+        endDate: deliveryDates[i], // For recurring orders, start and end date are the same
+        frequency,
+        totalNetAmount,
+        totalGrossAmount,
+        status: OrderStatus.PENDING,
+        mainOrder: i === 0, // First order is the main order
+        originalOrderNumber: i === 0 ? null : orderNumber, // Reference to main order
+      });
+
+      await order.save();
+      createdOrders.push(order);
     }
 
-    const orderNumber = `A-${year}-${sequence.toString().padStart(4, "0")}`;
-
-    // Create the order
-    const order = new Order({
-      orderNumber,
-      customer: customerDoc._id,
-      items: processedItems,
-      paymentMethod,
-      driverNote,
-      startDate,
-      endDate,
-      frequency,
-      totalNetAmount,
-      totalGrossAmount,
-      status: OrderStatus.PENDING,
-    });
-
-    await order.save();
-
     // Populate the response with customer and item details
-    const populatedOrder = await Order.findById(order._id)
+    const populatedOrders = await Order.find({
+      _id: { $in: createdOrders.map((o) => o._id) },
+    })
       .populate(
         "customer",
         "customerNumber name street houseNumber postalCode city"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure");
 
-    res.status(201).json(populatedOrder);
+    res.status(201).json(populatedOrders);
   } catch (error: any) {
     res.status(400).json({ error: error.message || "Error creating order" });
   }
@@ -103,7 +165,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
 export const getOrders = async (req: Request, res: Response) => {
   try {
-    const { search, status, startDate, endDate, customer, assignedDriver } =
+    const { search, status, date, startDate, endDate, customer, allOrders } =
       req.query;
 
     const query: any = {};
@@ -114,6 +176,13 @@ export const getOrders = async (req: Request, res: Response) => {
 
     if (status) {
       query.status = status;
+    }
+
+    if (date) {
+      query.startDate = {
+        $gte: new Date(date as string),
+        $lte: new Date(date as string),
+      };
     }
 
     if (startDate && endDate) {
@@ -127,8 +196,9 @@ export const getOrders = async (req: Request, res: Response) => {
       query.customer = customer;
     }
 
-    if (assignedDriver) {
-      query.assignedDriver = assignedDriver;
+    // If allOrders is false or not provided, only show main orders
+    if (allOrders !== "true") {
+      query.mainOrder = true;
     }
 
     const orders = await Order.find(query)
@@ -137,7 +207,10 @@ export const getOrders = async (req: Request, res: Response) => {
         "customerNumber name street houseNumber postalCode city"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure")
-      .populate("assignedDriver", "firstName lastName")
+      .populate(
+        "assignedDriver",
+        "name street houseNumber postalCode city driverNumber email mobileNumber"
+      )
       .sort({ startDate: -1 });
 
     res.json(orders);
@@ -209,7 +282,6 @@ export const updateOrder = async (req: Request, res: Response) => {
     if (updates.includes("items")) {
       const processedItems = await Promise.all(
         req.body.items.map(async (item: any) => {
-          // Validate item exists and is active
           const itemDoc = await Item.findById(item.item._id);
           if (!itemDoc) {
             throw new Error(`Item ${item.item._id} not found`);
@@ -232,6 +304,95 @@ export const updateOrder = async (req: Request, res: Response) => {
       req.body.items = processedItems;
     }
 
+    // Handle recurring order updates
+    const isRecurringUpdate = updates.some((update) =>
+      ["frequency", "startDate", "endDate"].includes(update)
+    );
+
+    if (isRecurringUpdate && order.mainOrder) {
+      // Delete all existing recurring orders that are in pending state
+      await Order.deleteMany({
+        originalOrderNumber: order.orderNumber,
+        mainOrder: false,
+        status: OrderStatus.PENDING,
+      });
+
+      // Generate new recurring orders
+      const newStartDate = updates.includes("startDate")
+        ? new Date(req.body.startDate)
+        : order.startDate;
+      const newEndDate = updates.includes("endDate")
+        ? new Date(req.body.endDate)
+        : order.endDate;
+      const newFrequency = updates.includes("frequency")
+        ? req.body.frequency
+        : order.frequency;
+
+      if (newStartDate && newEndDate && newFrequency) {
+        // Update main order's dates and frequency
+        order.startDate = newStartDate;
+        order.endDate = newEndDate;
+        order.frequency = newFrequency;
+
+        const deliveryDates = generateRecurringDates(
+          newStartDate,
+          newEndDate,
+          newFrequency
+        );
+
+        // Create new recurring orders
+        const createdOrders = [];
+        for (let i = 0; i < deliveryDates.length; i++) {
+          if (i === 0) continue; // Skip first date as it's the main order
+
+          const orderNumber = await generateOrderNumber(
+            new Date().getFullYear()
+          );
+
+          const recurringOrder = new Order({
+            orderNumber,
+            customer: order.customer,
+            items: updates.includes("items") ? req.body.items : order.items,
+            paymentMethod: updates.includes("paymentMethod")
+              ? req.body.paymentMethod
+              : order.paymentMethod,
+            driverNote: updates.includes("driverNote")
+              ? req.body.driverNote
+              : order.driverNote,
+            startDate: deliveryDates[i],
+            endDate: deliveryDates[i],
+            frequency: newFrequency,
+            totalNetAmount: updates.includes("totalNetAmount")
+              ? req.body.totalNetAmount
+              : order.totalNetAmount,
+            totalGrossAmount: updates.includes("totalGrossAmount")
+              ? req.body.totalGrossAmount
+              : order.totalGrossAmount,
+            status: OrderStatus.PENDING,
+            mainOrder: false,
+            originalOrderNumber: order.orderNumber,
+          });
+
+          await recurringOrder.save();
+          createdOrders.push(recurringOrder);
+        }
+      }
+    } else if (isRecurringUpdate && !order.mainOrder) {
+      // If updating a recurring order, update the main order instead
+      const mainOrder = await Order.findOne({
+        orderNumber: order.originalOrderNumber,
+        mainOrder: true,
+      });
+
+      if (mainOrder) {
+        return res.status(400).json({
+          error:
+            "Cannot update recurring order directly. Please update the main order instead.",
+        });
+      }
+    }
+
+    // Update the main order
     updates.forEach((update) => {
       (order as any)[update] = req.body[update];
     });
@@ -274,7 +435,10 @@ export const deleteOrder = async (req: Request, res: Response) => {
 export const getUnassignedOrders = async (req: Request, res: Response) => {
   try {
     const orders = await Order.find({ assignedDriver: null })
-      .populate("customer", "name customerNumber")
+      .populate(
+        "customer",
+        "name customerNumber street houseNumber postalCode city email mobileNumber"
+      )
       .sort({ createdAt: -1 });
     res.json(orders);
   } catch (error) {

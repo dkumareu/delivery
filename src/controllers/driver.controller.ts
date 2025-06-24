@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { Driver, DriverStatus } from "../models/driver.model";
+import { handleError } from "../utils/errorHandler";
 
 export const createDriver = async (req: Request, res: Response) => {
   try {
@@ -20,7 +21,10 @@ export const createDriver = async (req: Request, res: Response) => {
 
     const existingDriver = await Driver.findOne({ driverNumber });
     if (existingDriver) {
-      return res.status(400).json({ error: "Driver number already exists" });
+      return res.status(400).json({
+        error: "Driver number already exists",
+        message: `Driver number '${driverNumber}' already exists`,
+      });
     }
 
     const driver = new Driver({
@@ -41,10 +45,7 @@ export const createDriver = async (req: Request, res: Response) => {
     await driver.save();
     res.status(201).json(driver);
   } catch (error) {
-    res.status(400).json({
-      error: error instanceof Error ? error.message : "Error creating driver",
-      details: error,
-    });
+    handleError(error, res, "Error creating driver");
   }
 };
 
@@ -71,7 +72,7 @@ export const getDrivers = async (req: Request, res: Response) => {
       .sort({ name: 1 });
     res.json(drivers);
   } catch (error) {
-    res.status(400).json({ error: "Error fetching drivers" });
+    handleError(error, res, "Error fetching drivers");
   }
 };
 
@@ -79,11 +80,14 @@ export const getDriverById = async (req: Request, res: Response) => {
   try {
     const driver = await Driver.findById(req.params.id).select("-password");
     if (!driver) {
-      return res.status(404).json({ error: "Driver not found" });
+      return res.status(404).json({
+        error: "Driver not found",
+        message: "Driver not found",
+      });
     }
     res.json(driver);
   } catch (error) {
-    res.status(400).json({ error: "Error fetching driver" });
+    handleError(error, res, "Error fetching driver");
   }
 };
 
@@ -111,13 +115,16 @@ export const updateDriver = async (req: Request, res: Response) => {
     if (!isValidOperation) {
       return res.status(400).json({
         error: "Invalid updates",
-        details: "One or more fields in the update are not allowed",
+        message: "Invalid field(s) provided for update",
       });
     }
 
     const driver = await Driver.findById(req.params.id);
     if (!driver) {
-      return res.status(404).json({ error: "Driver not found" });
+      return res.status(404).json({
+        error: "Driver not found",
+        message: "Driver not found",
+      });
     }
 
     // Check if driverNumber is being updated and if it already exists
@@ -127,7 +134,10 @@ export const updateDriver = async (req: Request, res: Response) => {
         _id: { $ne: req.params.id }, // Exclude current driver
       });
       if (existingDriver) {
-        return res.status(400).json({ error: "Driver number already exists" });
+        return res.status(400).json({
+          error: "Driver number already exists",
+          message: `Driver number '${req.body.driverNumber}' already exists`,
+        });
       }
     }
 
@@ -149,17 +159,15 @@ export const updateDriver = async (req: Request, res: Response) => {
       "-password"
     );
     if (!updatedDriver) {
-      return res.status(404).json({ error: "Error fetching updated driver" });
+      return res.status(404).json({
+        error: "Error fetching updated driver",
+        message: "Error fetching updated driver",
+      });
     }
 
     res.json(updatedDriver);
   } catch (error) {
-    console.error("Error updating driver:", error);
-    res.status(400).json({
-      error: "Error updating driver",
-      details:
-        error instanceof Error ? error.message : "Unknown error occurred",
-    });
+    handleError(error, res, "Error updating driver");
   }
 };
 
@@ -167,12 +175,15 @@ export const deleteDriver = async (req: Request, res: Response) => {
   try {
     const driver = await Driver.findById(req.params.id);
     if (!driver) {
-      return res.status(404).json({ error: "Driver not found" });
+      return res.status(404).json({
+        error: "Driver not found",
+        message: "Driver not found",
+      });
     }
 
     await driver.deleteOne();
     res.json({ message: "Driver deleted successfully" });
   } catch (error) {
-    res.status(400).json({ error: "Error deleting driver" });
+    handleError(error, res, "Error deleting driver");
   }
 };

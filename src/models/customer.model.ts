@@ -18,6 +18,8 @@ export interface ICustomer extends Document {
   status: CustomerStatus;
   vacationStartDate?: Date;
   vacationEndDate?: Date;
+  latitude?: number;
+  longitude?: number;
 }
 
 const customerSchema = new Schema<ICustomer>(
@@ -73,6 +75,16 @@ const customerSchema = new Schema<ICustomer>(
     },
     vacationEndDate: {
       type: Date,
+    },
+    latitude: {
+      type: Number,
+      min: -90,
+      max: 90,
+    },
+    longitude: {
+      type: Number,
+      min: -180,
+      max: 180,
     },
   },
   {

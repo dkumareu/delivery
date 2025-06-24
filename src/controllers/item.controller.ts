@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { Item, UnitOfMeasure } from "../models/item.model";
+import { handleError } from "../utils/errorHandler";
 
 export const createItem = async (req: Request, res: Response) => {
   try {
@@ -16,7 +17,7 @@ export const createItem = async (req: Request, res: Response) => {
     await item.save();
     res.status(201).json(item);
   } catch (error) {
-    res.status(400).json({ error: "Error creating item" });
+    handleError(error, res, "Error creating item");
   }
 };
 
@@ -36,7 +37,7 @@ export const getItems = async (req: Request, res: Response) => {
     const items = await Item.find(query).sort({ filterType: 1 });
     res.json(items);
   } catch (error) {
-    res.status(400).json({ error: "Error fetching items" });
+    handleError(error, res, "Error fetching items");
   }
 };
 
@@ -44,11 +45,14 @@ export const getItemById = async (req: Request, res: Response) => {
   try {
     const item = await Item.findById(req.params.id);
     if (!item) {
-      return res.status(404).json({ error: "Item not found" });
+      return res.status(404).json({
+        error: "Item not found",
+        message: "Item not found",
+      });
     }
     res.json(item);
   } catch (error) {
-    res.status(400).json({ error: "Error fetching item" });
+    handleError(error, res, "Error fetching item");
   }
 };
 
@@ -67,13 +71,19 @@ export const updateItem = async (req: Request, res: Response) => {
   );
 
   if (!isValidOperation) {
-    return res.status(400).json({ error: "Invalid updates" });
+    return res.status(400).json({
+      error: "Invalid updates",
+      message: "Invalid field(s) provided for update",
+    });
   }
 
   try {
     const item = await Item.findById(req.params.id);
     if (!item) {
-      return res.status(404).json({ error: "Item not found" });
+      return res.status(404).json({
+        error: "Item not found",
+        message: "Item not found",
+      });
     }
 
     updates.forEach((update) => {
@@ -83,7 +93,7 @@ export const updateItem = async (req: Request, res: Response) => {
     await item.save();
     res.json(item);
   } catch (error) {
-    res.status(400).json({ error: "Error updating item" });
+    handleError(error, res, "Error updating item");
   }
 };
 
@@ -91,7 +101,10 @@ export const deleteItem = async (req: Request, res: Response) => {
   try {
     const item = await Item.findById(req.params.id);
     if (!item) {
-      return res.status(404).json({ error: "Item not found" });
+      return res.status(404).json({
+        error: "Item not found",
+        message: "Item not found",
+      });
     }
 
     // Instead of deleting, mark as inactive
@@ -99,6 +112,6 @@ export const deleteItem = async (req: Request, res: Response) => {
     await item.save();
     res.json({ message: "Item marked as inactive" });
   } catch (error) {
-    res.status(400).json({ error: "Error updating item status" });
+    handleError(error, res, "Error updating item status");
   }
 };

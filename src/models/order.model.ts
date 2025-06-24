@@ -53,6 +53,8 @@ export interface IOrder extends Document {
   totalGrossAmount: number;
   mainOrder: boolean;
   originalOrderNumber?: string;
+  deliverySequence?: number;
+  lastUpdated?: Date;
 }
 
 const orderItemSchema = new Schema<IOrderItem>({
@@ -148,6 +150,13 @@ const orderSchema = new Schema<IOrder>(
     originalOrderNumber: {
       type: String,
       trim: true,
+    },
+    deliverySequence: {
+      type: Number,
+      min: 1,
+    },
+    lastUpdated: {
+      type: Date,
     },
   },
   {

@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { User, UserRole, IUser } from "../models/user.model";
+import { handleError } from "../utils/errorHandler";
 
 export const register = async (req: Request, res: Response) => {
   try {
@@ -8,7 +9,10 @@ export const register = async (req: Request, res: Response) => {
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ error: "Email already registered" });
+      return res.status(400).json({
+        error: "Email already registered",
+        message: `Email '${email}' is already registered`,
+      });
     }
 
     const user = new User({
@@ -38,7 +42,7 @@ export const register = async (req: Request, res: Response) => {
       token,
     });
   } catch (error) {
-    res.status(400).json({ error: "Error creating user" });
+    handleError(error, res, "Error creating user");
   }
 };
 
@@ -48,12 +52,18 @@ export const login = async (req: Request, res: Response) => {
 
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({ error: "Invalid credentials" });
+      return res.status(401).json({
+        error: "Invalid credentials",
+        message: "Invalid email or password",
+      });
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
-      return res.status(401).json({ error: "Invalid credentials" });
+      return res.status(401).json({
+        error: "Invalid credentials",
+        message: "Invalid email or password",
+      });
     }
 
     const token = jwt.sign(
@@ -73,7 +83,7 @@ export const login = async (req: Request, res: Response) => {
       token,
     });
   } catch (error) {
-    res.status(400).json({ error: "Error logging in" });
+    handleError(error, res, "Error logging in");
   }
 };
 
@@ -81,12 +91,15 @@ export const getProfile = async (req: Request, res: Response) => {
   try {
     const user = await User.findById(req.user?.userId).select("-password");
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({
+        error: "User not found",
+        message: "User not found",
+      });
     }
 
     res.json(user);
   } catch (error) {
-    res.status(400).json({ error: "Error fetching profile" });
+    handleError(error, res, "Error fetching profile");
   }
 };
 
@@ -98,13 +111,19 @@ export const updateProfile = async (req: Request, res: Response) => {
   );
 
   if (!isValidOperation) {
-    return res.status(400).json({ error: "Invalid updates" });
+    return res.status(400).json({
+      error: "Invalid updates",
+      message: "Invalid field(s) provided for update",
+    });
   }
 
   try {
     const user = await User.findById(req.user?.userId);
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({
+        error: "User not found",
+        message: "User not found",
+      });
     }
 
     updates.forEach((update) => {
@@ -114,7 +133,7 @@ export const updateProfile = async (req: Request, res: Response) => {
     await user.save();
     res.json(user);
   } catch (error) {
-    res.status(400).json({ error: "Error updating profile" });
+    handleError(error, res, "Error updating profile");
   }
 };
 
@@ -123,7 +142,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
     const users = await User.find().select("-password");
     res.json(users);
   } catch (error) {
-    res.status(400).json({ error: "Error fetching users" });
+    handleError(error, res, "Error fetching users");
   }
 };
 
@@ -134,7 +153,10 @@ export const updateUserStatus = async (req: Request, res: Response) => {
 
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({
+        error: "User not found",
+        message: "User not found",
+      });
     }
 
     user.isActive = isActive;
@@ -142,6 +164,6 @@ export const updateUserStatus = async (req: Request, res: Response) => {
 
     res.json(user);
   } catch (error) {
-    res.status(400).json({ error: "Error updating user status" });
+    handleError(error, res, "Error updating user status");
   }
 };

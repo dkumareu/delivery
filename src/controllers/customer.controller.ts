@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { Customer, CustomerStatus } from "../models/customer.model";
 import { Order } from "../models/order.model";
+import { handleError } from "../utils/errorHandler";
 
 export const createCustomer = async (req: Request, res: Response) => {
   try {
@@ -16,11 +17,16 @@ export const createCustomer = async (req: Request, res: Response) => {
       status,
       vacationStartDate,
       vacationEndDate,
+      latitude,
+      longitude,
     } = req.body;
 
     const existingCustomer = await Customer.findOne({ customerNumber });
     if (existingCustomer) {
-      return res.status(400).json({ error: "Customer number already exists" });
+      return res.status(400).json({
+        error: "Customer number already exists",
+        message: `Customer number '${customerNumber}' already exists`,
+      });
     }
 
     const customer = new Customer({
@@ -35,15 +41,14 @@ export const createCustomer = async (req: Request, res: Response) => {
       status: status || CustomerStatus.ACTIVE,
       vacationStartDate,
       vacationEndDate,
+      latitude,
+      longitude,
     });
 
     await customer.save();
     res.status(201).json(customer);
   } catch (error) {
-    res.status(400).json({
-      error: error instanceof Error ? error.message : "Error creating customer",
-      details: error,
-    });
+    handleError(error, res, "Error creating customer");
   }
 };
 
@@ -68,7 +73,7 @@ export const getCustomers = async (req: Request, res: Response) => {
     const customers = await Customer.find(query).sort({ name: 1 });
     res.json(customers);
   } catch (error) {
-    res.status(400).json({ error: "Error fetching customers" });
+    handleError(error, res, "Error fetching customers");
   }
 };
 
@@ -76,11 +81,14 @@ export const getCustomerById = async (req: Request, res: Response) => {
   try {
     const customer = await Customer.findById(req.params.id);
     if (!customer) {
-      return res.status(404).json({ error: "Customer not found" });
+      return res.status(404).json({
+        error: "Customer not found",
+        message: "Customer not found",
+      });
     }
     res.json(customer);
   } catch (error) {
-    res.status(400).json({ error: "Error fetching customer" });
+    handleError(error, res, "Error fetching customer");
   }
 };
 
@@ -98,19 +106,27 @@ export const updateCustomer = async (req: Request, res: Response) => {
     "status",
     "vacationStartDate",
     "vacationEndDate",
+    "latitude",
+    "longitude",
   ];
   const isValidOperation = updates.every((update) =>
     allowedUpdates.includes(update)
   );
 
   if (!isValidOperation) {
-    return res.status(400).json({ error: "Invalid updates" });
+    return res.status(400).json({
+      error: "Invalid updates",
+      message: "Invalid field(s) provided for update",
+    });
   }
 
   try {
     const customer = await Customer.findById(req.params.id);
     if (!customer) {
-      return res.status(404).json({ error: "Customer not found" });
+      return res.status(404).json({
+        error: "Customer not found",
+        message: "Customer not found",
+      });
     }
 
     updates.forEach((update) => {
@@ -120,7 +136,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
     await customer.save();
     res.json(customer);
   } catch (error) {
-    res.status(400).json({ error: "Error updating customer" });
+    handleError(error, res, "Error updating customer");
   }
 };
 
@@ -128,13 +144,16 @@ export const deleteCustomer = async (req: Request, res: Response) => {
   try {
     const customer = await Customer.findById(req.params.id);
     if (!customer) {
-      return res.status(404).json({ error: "Customer not found" });
+      return res.status(404).json({
+        error: "Customer not found",
+        message: "Customer not found",
+      });
     }
 
     await customer.deleteOne();
     res.json({ message: "Customer deleted successfully" });
   } catch (error) {
-    res.status(400).json({ error: "Error deleting customer" });
+    handleError(error, res, "Error deleting customer");
   }
 };
 
@@ -145,7 +164,10 @@ export const getCustomerOrders = async (req: Request, res: Response) => {
     // Check if customer exists
     const customer = await Customer.findById(customerId);
     if (!customer) {
-      return res.status(404).json({ error: "Customer not found" });
+      return res.status(404).json({
+        error: "Customer not found",
+        message: "Customer not found",
+      });
     }
 
     // Get all orders for the customer
@@ -157,7 +179,6 @@ export const getCustomerOrders = async (req: Request, res: Response) => {
 
     res.json(orders);
   } catch (error) {
-    console.error("Error fetching customer orders:", error);
-    res.status(500).json({ error: "Error fetching customer orders" });
+    handleError(error, res, "Error fetching customer orders");
   }
 };

@@ -5,10 +5,12 @@ import {
   PaymentMethod,
   Frequency,
   IOrderItem,
+  IOrder,
 } from "../models/order.model";
 import { Customer, CustomerStatus } from "../models/customer.model";
 import { Item } from "../models/item.model";
 import { Driver } from "../models/driver.model";
+import { handleError } from "../utils/errorHandler";
 
 const generateOrderNumber = async (year: number) => {
   const lastOrder = await Order.findOne({
@@ -153,20 +155,28 @@ export const createOrder = async (req: Request, res: Response) => {
     })
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city"
+        "customerNumber name street houseNumber postalCode city latitude longitude"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure");
 
     res.status(201).json(populatedOrders);
   } catch (error: any) {
-    res.status(400).json({ error: error.message || "Error creating order" });
+    handleError(error, res, "Error creating order");
   }
 };
 
 export const getOrders = async (req: Request, res: Response) => {
   try {
-    const { search, status, date, startDate, endDate, customer, allOrders } =
-      req.query;
+    const {
+      search,
+      status,
+      date,
+      startDate,
+      endDate,
+      customer,
+      allOrders,
+      driver,
+    } = req.query;
 
     const query: any = {};
 
@@ -196,26 +206,36 @@ export const getOrders = async (req: Request, res: Response) => {
       query.customer = customer;
     }
 
+    if (driver) {
+      query.assignedDriver = driver;
+    }
+
     // If allOrders is false or not provided, only show main orders
     if (allOrders !== "true") {
       query.mainOrder = true;
     }
 
+    // Determine sort order - if filtering by driver and date, sort by delivery sequence
+    let sortOrder: any = { startDate: -1 };
+    if (driver && date) {
+      sortOrder = { deliverySequence: 1, startDate: -1 };
+    }
+
     const orders = await Order.find(query)
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city email mobileNumber"
+        "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure")
       .populate(
         "assignedDriver",
         "name street houseNumber postalCode city driverNumber email mobileNumber"
       )
-      .sort({ startDate: -1 });
-
+      .sort(sortOrder);
+    console.log("query", query);
     res.json(orders);
   } catch (error) {
-    res.status(400).json({ error: "Error fetching orders", details: error });
+    handleError(error, res, "Error fetching orders");
   }
 };
 
@@ -224,7 +244,7 @@ export const getOrderById = async (req: Request, res: Response) => {
     const order = await Order.findById(req.params.id)
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city email mobileNumber"
+        "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure")
       .populate(
@@ -233,12 +253,15 @@ export const getOrderById = async (req: Request, res: Response) => {
       );
 
     if (!order) {
-      return res.status(404).json({ error: "Order not found" });
+      return res.status(404).json({
+        error: "Order not found",
+        message: "Order not found",
+      });
     }
 
     res.json(order);
   } catch (error) {
-    res.status(400).json({ error: "Error fetching order", details: error });
+    handleError(error, res, "Error fetching order");
   }
 };
 
@@ -261,7 +284,10 @@ export const updateOrder = async (req: Request, res: Response) => {
   );
 
   if (!isValidOperation) {
-    return res.status(400).json({ error: "Invalid updates" });
+    return res.status(400).json({
+      error: "Invalid updates",
+      message: "Invalid field(s) provided for update",
+    });
   }
 
   try {
@@ -406,7 +432,7 @@ export const updateOrder = async (req: Request, res: Response) => {
     const updatedOrder = await Order.findById(order._id)
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city"
+        "customerNumber name street houseNumber postalCode city latitude longitude"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure");
 
@@ -440,7 +466,7 @@ export const getUnassignedOrders = async (req: Request, res: Response) => {
     const orders = await Order.find({ assignedDriver: null })
       .populate(
         "customer",
-        "name customerNumber street houseNumber postalCode city email mobileNumber"
+        "name customerNumber street houseNumber postalCode city email mobileNumber latitude longitude"
       )
       .sort({ createdAt: -1 });
     res.json(orders);
@@ -478,5 +504,98 @@ export const assignOrdersToDriver = async (req: Request, res: Response) => {
       error: "Error assigning orders",
       details: error instanceof Error ? error.message : "Unknown error",
     });
+  }
+};
+
+export const updateDeliverySequence = async (req: Request, res: Response) => {
+  try {
+    const { orderIds, driverId, deliveryDate } = req.body;
+
+    // Validate required fields
+    if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+      return res.status(400).json({
+        error: "Invalid orderIds. Must be a non-empty array.",
+      });
+    }
+
+    if (!driverId) {
+      return res.status(400).json({
+        error: "Driver ID is required.",
+      });
+    }
+
+    if (!deliveryDate) {
+      return res.status(400).json({
+        error: "Delivery date is required.",
+      });
+    }
+
+    // Validate driver exists
+    const driver = await Driver.findById(driverId);
+    if (!driver) {
+      return res.status(404).json({ error: "Driver not found" });
+    }
+
+    // Validate all orders exist and belong to the specified driver
+    const orders = await Order.find({
+      _id: { $in: orderIds },
+      assignedDriver: driverId,
+    });
+
+    console.log("Validation debug:", {
+      requestedOrderIds: orderIds,
+      requestedDriverId: driverId,
+      foundOrdersCount: orders.length,
+      requestedCount: orderIds.length,
+    });
+
+    if (orders.length !== orderIds.length) {
+      return res.status(400).json({
+        error: "Some orders not found or do not match the specified driver.",
+        orderIds: orderIds,
+        driverId: driverId,
+        foundOrdersCount: orders.length,
+        requestedCount: orderIds.length,
+      });
+    }
+
+    // Update delivery sequence for each order
+    const updatePromises = orderIds.map((orderId: string, index: number) => {
+      return Order.findByIdAndUpdate(
+        orderId,
+        {
+          $set: {
+            deliverySequence: index + 1,
+            lastUpdated: new Date(),
+          },
+        },
+        { new: true }
+      );
+    });
+
+    const updatedOrders = await Promise.all(updatePromises);
+
+    // Populate the response with customer and item details
+    const populatedOrders = await Order.find({
+      _id: { $in: orderIds },
+    })
+      .populate(
+        "customer",
+        "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
+      )
+      .populate("items.item", "filterType length width depth unitOfMeasure")
+      .populate(
+        "assignedDriver",
+        "name street houseNumber postalCode city driverNumber email mobileNumber"
+      )
+      .sort({ deliverySequence: 1 });
+
+    res.json({
+      message: "Delivery sequence updated successfully",
+      orders: populatedOrders,
+      updatedCount: updatedOrders.length,
+    });
+  } catch (error) {
+    handleError(error, res, "Error updating delivery sequence");
   }
 };

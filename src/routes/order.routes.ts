@@ -9,6 +9,7 @@ import {
   deleteOrder,
   getUnassignedOrders,
   assignOrdersToDriver,
+  updateDeliverySequence,
 } from "../controllers/order.controller";
 
 const router = express.Router();
@@ -35,6 +36,13 @@ router.post(
   "/assign-driver",
   checkRole([UserRole.ADMIN, UserRole.BACK_OFFICE]),
   assignOrdersToDriver
+);
+
+// Update delivery sequence
+router.post(
+  "/update-sequence",
+  checkRole([UserRole.ADMIN, UserRole.BACK_OFFICE]),
+  updateDeliverySequence
 );
 
 // General routes

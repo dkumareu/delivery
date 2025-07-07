@@ -176,6 +176,8 @@ export const getOrders = async (req: Request, res: Response) => {
       customer,
       allOrders,
       driver,
+      year,
+      month,
     } = req.query;
 
     const query: any = {};
@@ -208,6 +210,16 @@ export const getOrders = async (req: Request, res: Response) => {
 
     if (driver) {
       query.assignedDriver = driver;
+    }
+
+    // Filter by year and month if provided
+    if (year && month) {
+      const startOfMonth = new Date(parseInt(year as string), parseInt(month as string) - 1, 1);
+      const endOfMonth = new Date(parseInt(year as string), parseInt(month as string), 0, 23, 59, 59, 999);
+      query.startDate = {
+        $gte: startOfMonth,
+        $lte: endOfMonth,
+      };
     }
 
     // If allOrders is false or not provided, only show main orders

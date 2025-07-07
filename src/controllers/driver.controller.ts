@@ -17,6 +17,8 @@ export const createDriver = async (req: Request, res: Response) => {
       status,
       vacationStartDate,
       vacationEndDate,
+      latitude,
+      longitude,
     } = req.body;
 
     const existingDriver = await Driver.findOne({ driverNumber });
@@ -40,6 +42,8 @@ export const createDriver = async (req: Request, res: Response) => {
       status: status || DriverStatus.ACTIVE,
       vacationStartDate,
       vacationEndDate,
+      latitude,
+      longitude,
     });
 
     await driver.save();
@@ -107,6 +111,8 @@ export const updateDriver = async (req: Request, res: Response) => {
       "status",
       "vacationStartDate",
       "vacationEndDate",
+      "latitude",
+      "longitude",
     ];
     const isValidOperation = updates.every((update) =>
       allowedUpdates.includes(update)

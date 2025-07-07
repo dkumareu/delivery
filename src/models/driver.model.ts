@@ -20,6 +20,8 @@ export interface IDriver extends Document {
   status: DriverStatus;
   vacationStartDate?: Date;
   vacationEndDate?: Date;
+  latitude?: number;
+  longitude?: number;
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
@@ -81,6 +83,12 @@ const driverSchema = new Schema<IDriver>(
     },
     vacationEndDate: {
       type: Date,
+    },
+    latitude: {
+      type: Number,
+    },
+    longitude: {
+      type: Number,
     },
   },
   {

@@ -1,11 +1,11 @@
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
-import { User, UserRole, IUser } from "../models/user.model";
+import { User, UserRole, IUser, IPermission } from "../models/user.model";
 import { handleError } from "../utils/errorHandler";
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { email, password, firstName, lastName, role } = req.body;
+    const { email, password, firstName, lastName, role, permissions } = req.body;
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -21,6 +21,7 @@ export const register = async (req: Request, res: Response) => {
       firstName,
       lastName,
       role: role || UserRole.FIELD_SERVICE,
+      permissions: permissions || []
     });
 
     await user.save();
@@ -38,6 +39,7 @@ export const register = async (req: Request, res: Response) => {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        permissions: user.permissions
       },
       token,
     });
@@ -79,6 +81,7 @@ export const login = async (req: Request, res: Response) => {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        permissions: user.permissions
       },
       token,
     });
@@ -146,6 +149,116 @@ export const getAllUsers = async (req: Request, res: Response) => {
   }
 };
 
+export const createUser = async (req: Request, res: Response) => {
+  try {
+    const { email, password, firstName, lastName, role, permissions, isActive } = req.body;
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        error: "Email already registered",
+        message: `Email '${email}' is already registered`,
+      });
+    }
+
+    const user = new User({
+      email,
+      password,
+      firstName,
+      lastName,
+      role: role || UserRole.FIELD_SERVICE,
+      permissions: permissions || [],
+      isActive: isActive !== undefined ? isActive : true
+    });
+
+    await user.save();
+
+    res.status(201).json({
+      user: {
+        id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        permissions: user.permissions,
+        isActive: user.isActive
+      }
+    });
+  } catch (error) {
+    handleError(error, res, "Error creating user");
+  }
+};
+
+export const updateUser = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { email, firstName, lastName, role, permissions, isActive } = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found",
+        message: "User not found",
+      });
+    }
+
+    // Check if email is being changed and if it's already taken
+    if (email && email !== user.email) {
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        return res.status(400).json({
+          error: "Email already registered",
+          message: `Email '${email}' is already registered`,
+        });
+      }
+    }
+
+    // Update fields
+    if (email) user.email = email;
+    if (firstName) user.firstName = firstName;
+    if (lastName) user.lastName = lastName;
+    if (role) user.role = role;
+    if (permissions) user.permissions = permissions;
+    if (isActive !== undefined) user.isActive = isActive;
+
+    await user.save();
+
+    res.json({
+      user: {
+        id: user._id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        permissions: user.permissions,
+        isActive: user.isActive
+      }
+    });
+  } catch (error) {
+    handleError(error, res, "Error updating user");
+  }
+};
+
+export const deleteUser = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found",
+        message: "User not found",
+      });
+    }
+
+    await User.findByIdAndDelete(userId);
+
+    res.json({ message: "User deleted successfully" });
+  } catch (error) {
+    handleError(error, res, "Error deleting user");
+  }
+};
+
 export const updateUserStatus = async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
@@ -165,5 +278,23 @@ export const updateUserStatus = async (req: Request, res: Response) => {
     res.json(user);
   } catch (error) {
     handleError(error, res, "Error updating user status");
+  }
+};
+
+export const getUserById = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId).select("-password");
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found",
+        message: "User not found",
+      });
+    }
+
+    res.json(user);
+  } catch (error) {
+    handleError(error, res, "Error fetching user");
   }
 };

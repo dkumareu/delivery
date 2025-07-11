@@ -8,6 +8,14 @@ export enum UserRole {
   WAREHOUSE = "warehouse",
 }
 
+export interface IPermission {
+  page: string;
+  canView: boolean;
+  canAdd: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+}
+
 export interface IUser extends Document {
   email: string;
   password: string;
@@ -15,8 +23,21 @@ export interface IUser extends Document {
   lastName: string;
   role: UserRole;
   isActive: boolean;
+  permissions: IPermission[];
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
+
+const permissionSchema = new Schema<IPermission>({
+  page: {
+    type: String,
+    required: true,
+    enum: ['dashboard', 'customers', 'orders', 'items', 'drivers', 'delivery-routes', 'planning-board', 'assign-driver', 'reports', 'employees']
+  },
+  canView: { type: Boolean, default: false },
+  canAdd: { type: Boolean, default: false },
+  canEdit: { type: Boolean, default: false },
+  canDelete: { type: Boolean, default: false }
+});
 
 const userSchema = new Schema<IUser>(
   {
@@ -51,6 +72,10 @@ const userSchema = new Schema<IUser>(
       type: Boolean,
       default: true,
     },
+    permissions: {
+      type: [permissionSchema],
+      default: []
+    }
   },
   {
     timestamps: true,

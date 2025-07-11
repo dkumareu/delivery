@@ -8,6 +8,10 @@ import {
   updateProfile,
   getAllUsers,
   updateUserStatus,
+  createUser,
+  updateUser,
+  deleteUser,
+  getUserById,
 } from "../controllers/user.controller";
 
 const router = Router();
@@ -22,6 +26,10 @@ router.patch("/profile", auth, updateProfile);
 
 // Admin only routes
 router.get("/all", auth, checkRole([UserRole.ADMIN]), getAllUsers);
+router.get("/:userId", auth, checkRole([UserRole.ADMIN]), getUserById);
+router.post("/", auth, checkRole([UserRole.ADMIN]), createUser);
+router.put("/:userId", auth, checkRole([UserRole.ADMIN]), updateUser);
+router.delete("/:userId", auth, checkRole([UserRole.ADMIN]), deleteUser);
 router.patch(
   "/:userId/status",
   auth,

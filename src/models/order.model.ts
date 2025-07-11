@@ -13,6 +13,10 @@ export enum PaymentMethod {
 export enum OrderStatus {
   PENDING = "pending",
   IN_PROGRESS = "in_progress",
+  OUT_FOR_DELIVERY = "out_for_delivery",
+  DELIVERED = "delivered",
+  DENIED_BY_CUSTOMER = "denied_by_customer",
+  CUSTOMER_NOT_AVAILABLE = "customer_not_available",
   COMPLETED = "completed",
   CANCELLED = "cancelled",
   PAUSED = "paused",

@@ -10,6 +10,7 @@ import {
   getUnassignedOrders,
   assignOrdersToDriver,
   updateDeliverySequence,
+  updateOrderStatus,
 } from "../controllers/order.controller";
 
 const router = express.Router();
@@ -43,6 +44,13 @@ router.post(
   "/update-sequence",
   checkRole([UserRole.ADMIN, UserRole.BACK_OFFICE]),
   updateDeliverySequence
+);
+
+// Update order status
+router.patch(
+  "/:orderId/status",
+  checkRole([UserRole.ADMIN, UserRole.BACK_OFFICE]),
+  updateOrderStatus
 );
 
 // General routes

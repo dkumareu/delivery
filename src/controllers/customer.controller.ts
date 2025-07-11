@@ -57,6 +57,13 @@ export const getCustomers = async (req: Request, res: Response) => {
     const { search, status } = req.query;
     const query: any = {};
 
+    // Always exclude deleted customers unless specifically requested
+    if (status === "deleted") {
+      query.status = "deleted";
+    } else {
+      query.status = { $ne: "deleted" };
+    }
+
     if (search) {
       query.$or = [
         { customerNumber: { $regex: search, $options: "i" } },
@@ -66,7 +73,7 @@ export const getCustomers = async (req: Request, res: Response) => {
       ];
     }
 
-    if (status) {
+    if (status && status !== "deleted") {
       query.status = status;
     }
 
@@ -86,6 +93,15 @@ export const getCustomerById = async (req: Request, res: Response) => {
         message: "Customer not found",
       });
     }
+    
+    // Check if customer is deleted
+    if (customer.status === CustomerStatus.DELETED) {
+      return res.status(404).json({
+        error: "Customer not found",
+        message: "Customer not found",
+      });
+    }
+    
     res.json(customer);
   } catch (error) {
     handleError(error, res, "Error fetching customer");
@@ -150,7 +166,18 @@ export const deleteCustomer = async (req: Request, res: Response) => {
       });
     }
 
-    await customer.deleteOne();
+    // Check if customer is already deleted
+    if (customer.status === CustomerStatus.DELETED) {
+      return res.status(400).json({
+        error: "Customer already deleted",
+        message: "Customer is already deleted",
+      });
+    }
+
+    // Soft delete - change status to deleted instead of removing from database
+    customer.status = CustomerStatus.DELETED;
+    await customer.save();
+    
     res.json({ message: "Customer deleted successfully" });
   } catch (error) {
     handleError(error, res, "Error deleting customer");
@@ -161,9 +188,9 @@ export const getCustomerOrders = async (req: Request, res: Response) => {
   try {
     const customerId = req.params.id;
 
-    // Check if customer exists
+    // Check if customer exists and is not deleted
     const customer = await Customer.findById(customerId);
-    if (!customer) {
+    if (!customer || customer.status === CustomerStatus.DELETED) {
       return res.status(404).json({
         error: "Customer not found",
         message: "Customer not found",

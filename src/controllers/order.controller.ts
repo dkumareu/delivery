@@ -288,6 +288,7 @@ export const updateOrder = async (req: Request, res: Response) => {
     "endDate",
     "frequency",
     "assignedDriver",
+    "status",
     "totalNetAmount",
     "totalGrossAmount",
   ];
@@ -516,6 +517,48 @@ export const assignOrdersToDriver = async (req: Request, res: Response) => {
       error: "Error assigning orders",
       details: error instanceof Error ? error.message : "Unknown error",
     });
+  }
+};
+
+export const updateOrderStatus = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    // Validate status
+    if (!status || !Object.values(OrderStatus).includes(status)) {
+      return res.status(400).json({
+        error: "Invalid status provided",
+        message: "Status must be one of the valid order statuses",
+      });
+    }
+
+    // Find and update the order
+    const order = await Order.findByIdAndUpdate(
+      orderId,
+      { 
+        status,
+        lastUpdated: new Date()
+      },
+      { new: true }
+    ).populate(
+      "customer",
+      "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
+    ).populate("items.item", "filterType length width depth unitOfMeasure");
+
+    if (!order) {
+      return res.status(404).json({
+        error: "Order not found",
+        message: "Order not found",
+      });
+    }
+
+    res.json({
+      message: "Order status updated successfully",
+      order,
+    });
+  } catch (error) {
+    handleError(error, res, "Error updating order status");
   }
 };
 

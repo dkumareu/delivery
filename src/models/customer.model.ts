@@ -4,6 +4,7 @@ export enum CustomerStatus {
   ACTIVE = "active",
   ON_VACATION = "on_vacation",
   INACTIVE = "inactive",
+  DELETED = "deleted",
 }
 
 export interface ICustomer extends Document {

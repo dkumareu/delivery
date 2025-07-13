@@ -15,19 +15,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-
-const allowedOrigins = ['https://dev-env.co'];
-
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true, // if you're sending cookies or authorization headers
-}));
+app.use(cors());
 app.use(express.json());
 
 // Routes

@@ -36,7 +36,7 @@ const createDemoUser = async () => {
     // Create demo user
     const demoUser = new User({
       email: "admin@example.com",
-      password: "admin123",
+      password: "deepak123",
       firstName: "Admin",
       lastName: "Admin",
       role: UserRole.ADMIN,

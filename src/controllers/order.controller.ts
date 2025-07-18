@@ -11,6 +11,9 @@ import { Customer, CustomerStatus } from "../models/customer.model";
 import { Item } from "../models/item.model";
 import { Driver } from "../models/driver.model";
 import { handleError } from "../utils/errorHandler";
+import { AuditService } from "../utils/auditService";
+import { AuditAction } from "../models/audit.model";
+import { User } from "../models/user.model";
 
 const generateOrderNumber = async (year: number) => {
   const lastOrder = await Order.findOne({
@@ -147,6 +150,26 @@ export const createOrder = async (req: Request, res: Response) => {
 
       await order.save();
       createdOrders.push(order);
+    }
+
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail for each created order
+    if (req.user?.userId) {
+      for (const order of createdOrders) {
+        await AuditService.logChange(
+          AuditService.createAuditLogData(
+            req.user.userId as string,
+            currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+            AuditAction.CREATE,
+            'orders',
+            (order._id as any).toString(),
+            [],
+            req
+          )
+        );
+      }
     }
 
     // Populate the response with customer and item details
@@ -309,6 +332,21 @@ export const updateOrder = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
+    // Store old values for audit
+    const oldValues = {
+      customer: order.customer,
+      items: order.items,
+      paymentMethod: order.paymentMethod,
+      driverNote: order.driverNote,
+      startDate: order.startDate,
+      endDate: order.endDate,
+      frequency: order.frequency,
+      assignedDriver: order.assignedDriver,
+      status: order.status,
+      totalNetAmount: order.totalNetAmount,
+      totalGrossAmount: order.totalGrossAmount,
+    };
+
     // If customer is being updated, validate it
     if (updates.includes("customer")) {
       const customerDoc = await Customer.findById(req.body.customer);
@@ -441,6 +479,25 @@ export const updateOrder = async (req: Request, res: Response) => {
 
     await order.save();
 
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      const changes = AuditService.compareObjects(oldValues, order.toObject());
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.UPDATE,
+          'orders',
+          (order._id as any).toString(),
+          changes,
+          req
+        )
+      );
+    }
+
     // Populate the response with customer and item details
     const updatedOrder = await Order.findById(order._id)
       .populate(
@@ -467,7 +524,26 @@ export const deleteOrder = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Can only delete pending orders" });
     }
 
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+
     await order.deleteOne();
+
+    // Log audit trail
+    if (req.user?.userId) {
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.DELETE,
+          'orders',
+          (order._id as any).toString(),
+          [],
+          req
+        )
+      );
+    }
+
     res.json({ message: "Order deleted successfully" });
   } catch (error) {
     res.status(400).json({ error: "Error deleting order" });
@@ -533,8 +609,20 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
+    // Find the order first to get old values for audit
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({
+        error: "Order not found",
+        message: "Order not found",
+      });
+    }
+
+    // Store old value for audit
+    const oldStatus = order.status;
+
     // Find and update the order
-    const order = await Order.findByIdAndUpdate(
+    const updatedOrder = await Order.findByIdAndUpdate(
       orderId,
       { 
         status,
@@ -546,16 +634,35 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
     ).populate("items.item", "filterType length width depth unitOfMeasure");
 
-    if (!order) {
+    if (!updatedOrder) {
       return res.status(404).json({
         error: "Order not found",
         message: "Order not found",
       });
     }
 
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      const changes = AuditService.compareObjects({ status: oldStatus }, { status: updatedOrder.status });
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.UPDATE,
+          'orders',
+          (updatedOrder._id as any).toString(),
+          changes,
+          req
+        )
+      );
+    }
+
     res.json({
       message: "Order status updated successfully",
-      order,
+      order: updatedOrder,
     });
   } catch (error) {
     handleError(error, res, "Error updating order status");

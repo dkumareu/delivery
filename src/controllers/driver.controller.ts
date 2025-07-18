@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { Driver, DriverStatus } from "../models/driver.model";
 import { handleError } from "../utils/errorHandler";
+import { AuditService } from "../utils/auditService";
+import { AuditAction } from "../models/audit.model";
+import { User } from "../models/user.model";
 
 export const createDriver = async (req: Request, res: Response) => {
   try {
@@ -47,6 +50,25 @@ export const createDriver = async (req: Request, res: Response) => {
     });
 
     await driver.save();
+
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.CREATE,
+          'drivers',
+          (driver._id as any).toString(),
+          [],
+          req
+        )
+      );
+    }
+
     res.status(201).json(driver);
   } catch (error) {
     handleError(error, res, "Error creating driver");
@@ -133,6 +155,23 @@ export const updateDriver = async (req: Request, res: Response) => {
       });
     }
 
+    // Store old values for audit
+    const oldValues = {
+      driverNumber: driver.driverNumber,
+      name: driver.name,
+      street: driver.street,
+      houseNumber: driver.houseNumber,
+      postalCode: driver.postalCode,
+      city: driver.city,
+      mobileNumber: driver.mobileNumber,
+      email: driver.email,
+      status: driver.status,
+      vacationStartDate: driver.vacationStartDate,
+      vacationEndDate: driver.vacationEndDate,
+      latitude: driver.latitude,
+      longitude: driver.longitude,
+    };
+
     // Check if driverNumber is being updated and if it already exists
     if (updates.includes("driverNumber")) {
       const existingDriver = await Driver.findOne({
@@ -159,6 +198,25 @@ export const updateDriver = async (req: Request, res: Response) => {
     });
 
     await driver.save();
+
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      const changes = AuditService.compareObjects(oldValues, driver.toObject());
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.UPDATE,
+          'drivers',
+          (driver._id as any).toString(),
+          changes,
+          req
+        )
+      );
+    }
 
     // Fetch updated driver without password
     const updatedDriver = await Driver.findById(req.params.id).select(
@@ -187,7 +245,26 @@ export const deleteDriver = async (req: Request, res: Response) => {
       });
     }
 
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+
     await driver.deleteOne();
+
+    // Log audit trail
+    if (req.user?.userId) {
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.DELETE,
+          'drivers',
+          (driver._id as any).toString(),
+          [],
+          req
+        )
+      );
+    }
+
     res.json({ message: "Driver deleted successfully" });
   } catch (error) {
     handleError(error, res, "Error deleting driver");

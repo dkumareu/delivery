@@ -1,6 +1,9 @@
 import { Request, Response } from "express";
 import { Item, UnitOfMeasure } from "../models/item.model";
 import { handleError } from "../utils/errorHandler";
+import { AuditService } from "../utils/auditService";
+import { AuditAction } from "../models/audit.model";
+import { User } from "../models/user.model";
 
 export const createItem = async (req: Request, res: Response) => {
   try {
@@ -15,6 +18,25 @@ export const createItem = async (req: Request, res: Response) => {
     });
 
     await item.save();
+
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.CREATE,
+          'items',
+          (item._id as any).toString(),
+          [],
+          req
+        )
+      );
+    }
+
     res.status(201).json(item);
   } catch (error) {
     handleError(error, res, "Error creating item");
@@ -86,11 +108,41 @@ export const updateItem = async (req: Request, res: Response) => {
       });
     }
 
+    // Store old values for audit
+    const oldValues = {
+      filterType: item.filterType,
+      length: item.length,
+      width: item.width,
+      depth: item.depth,
+      unitOfMeasure: item.unitOfMeasure,
+      isActive: item.isActive,
+    };
+
     updates.forEach((update) => {
       (item as any)[update] = req.body[update];
     });
 
     await item.save();
+
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      const changes = AuditService.compareObjects(oldValues, item.toObject());
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.UPDATE,
+          'items',
+          (item._id as any).toString(),
+          changes,
+          req
+        )
+      );
+    }
+
     res.json(item);
   } catch (error) {
     handleError(error, res, "Error updating item");
@@ -107,11 +159,28 @@ export const deleteItem = async (req: Request, res: Response) => {
       });
     }
 
-    // Instead of deleting, mark as inactive
-    item.isActive = false;
-    await item.save();
-    res.json({ message: "Item marked as inactive" });
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+
+    await item.deleteOne();
+
+    // Log audit trail
+    if (req.user?.userId) {
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.DELETE,
+          'items',
+          (item._id as any).toString(),
+          [],
+          req
+        )
+      );
+    }
+
+    res.json({ message: "Item deleted successfully" });
   } catch (error) {
-    handleError(error, res, "Error updating item status");
+    handleError(error, res, "Error deleting item");
   }
 };

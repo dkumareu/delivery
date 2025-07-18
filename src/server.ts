@@ -8,6 +8,7 @@ import { itemRoutes } from "./routes/item.routes";
 import orderRoutes from "./routes/order.routes";
 import { driverRoutes } from "./routes/driver.routes";
 import { dashboardRoutes } from "./routes/dashboard.routes";
+import auditRoutes from "./routes/audit.routes";
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.use("/api/items", itemRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/drivers", driverRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/audit", auditRoutes);
 
 // MongoDB Connection
 mongoose

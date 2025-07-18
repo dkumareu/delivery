@@ -1,7 +1,10 @@
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import { User, UserRole, IUser, IPermission } from "../models/user.model";
 import { handleError } from "../utils/errorHandler";
+import { AuditService } from "../utils/auditService";
+import { AuditAction } from "../models/audit.model";
 
 export const register = async (req: Request, res: Response) => {
   try {
@@ -53,6 +56,9 @@ export const login = async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
+
+    console.log("user>>>>>>>",user);
+    
     if (!user) {
       return res.status(401).json({
         error: "Invalid credentials",
@@ -173,6 +179,24 @@ export const createUser = async (req: Request, res: Response) => {
 
     await user.save();
 
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.CREATE,
+          'users',
+          (user._id as any).toString(),
+          [],
+          req
+        )
+      );
+    }
+
     res.status(201).json({
       user: {
         id: user._id,
@@ -202,6 +226,16 @@ export const updateUser = async (req: Request, res: Response) => {
       });
     }
 
+    // Store old values for audit
+    const oldValues = {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      permissions: user.permissions,
+      isActive: user.isActive
+    };
+
     // Check if email is being changed and if it's already taken
     if (email && email !== user.email) {
       const existingUser = await User.findOne({ email });
@@ -222,6 +256,25 @@ export const updateUser = async (req: Request, res: Response) => {
     if (isActive !== undefined) user.isActive = isActive;
 
     await user.save();
+
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      const changes = AuditService.compareObjects(oldValues, user.toObject());
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.UPDATE,
+          'users',
+          (user._id as any).toString(),
+          changes,
+          req
+        )
+      );
+    }
 
     res.json({
       user: {
@@ -251,7 +304,25 @@ export const deleteUser = async (req: Request, res: Response) => {
       });
     }
 
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+
     await User.findByIdAndDelete(userId);
+
+    // Log audit trail
+    if (req.user?.userId) {
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.DELETE,
+          'users',
+          (user._id as any).toString(),
+          [],
+          req
+        )
+      );
+    }
 
     res.json({ message: "User deleted successfully" });
   } catch (error) {
@@ -272,8 +343,30 @@ export const updateUserStatus = async (req: Request, res: Response) => {
       });
     }
 
+    // Store old value for audit
+    const oldIsActive = user.isActive;
+
     user.isActive = isActive;
     await user.save();
+
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      const changes = AuditService.compareObjects({ isActive: oldIsActive }, { isActive: user.isActive });
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.UPDATE,
+          'users',
+          (user._id as any).toString(),
+          changes,
+          req
+        )
+      );
+    }
 
     res.json(user);
   } catch (error) {

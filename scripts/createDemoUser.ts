@@ -30,7 +30,8 @@ const createDemoUser = async () => {
       { page: 'planning-board', canView: true, canAdd: false, canEdit: true, canDelete: false },
       { page: 'assign-driver', canView: true, canAdd: false, canEdit: true, canDelete: false },
       { page: 'reports', canView: true, canAdd: false, canEdit: false, canDelete: false },
-      { page: 'employees', canView: true, canAdd: true, canEdit: true, canDelete: true }
+      { page: 'employees', canView: true, canAdd: true, canEdit: true, canDelete: true },
+      { page: 'audit', canView: true, canAdd: false, canEdit: false, canDelete: false }
     ];
 
     // Create demo user

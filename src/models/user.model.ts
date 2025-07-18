@@ -31,7 +31,7 @@ const permissionSchema = new Schema<IPermission>({
   page: {
     type: String,
     required: true,
-    enum: ['dashboard', 'customers', 'orders', 'items', 'drivers', 'delivery-routes', 'planning-board', 'assign-driver', 'reports', 'employees']
+    enum: ['dashboard', 'customers', 'orders', 'items', 'drivers', 'delivery-routes', 'planning-board', 'assign-driver', 'reports', 'employees', 'audit']
   },
   canView: { type: Boolean, default: false },
   canAdd: { type: Boolean, default: false },

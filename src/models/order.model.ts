@@ -11,6 +11,7 @@ export enum PaymentMethod {
 }
 
 export enum OrderStatus {
+  DRAFT = "draft",
   PENDING = "pending",
   IN_PROGRESS = "in_progress",
   OUT_FOR_DELIVERY = "out_for_delivery",

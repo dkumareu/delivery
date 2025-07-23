@@ -55,4 +55,10 @@ const itemSchema = new Schema<IItem>(
 // Index for efficient searching
 itemSchema.index({ filterType: 1 });
 
+// Compound unique index to prevent duplicate combinations
+itemSchema.index(
+  { filterType: 1, length: 1, width: 1, depth: 1, unitOfMeasure: 1 },
+  { unique: true, name: "unique_item_combination" }
+);
+
 export const Item = mongoose.model<IItem>("Item", itemSchema);

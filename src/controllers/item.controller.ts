@@ -9,6 +9,30 @@ export const createItem = async (req: Request, res: Response) => {
   try {
     const { filterType, length, width, depth, unitOfMeasure } = req.body;
 
+    // Check if an item with the same combination already exists
+    const existingItem = await Item.findOne({
+      filterType,
+      length,
+      width,
+      depth,
+      unitOfMeasure,
+    });
+
+    if (existingItem) {
+      return res.status(409).json({
+        error: "Duplicate item",
+        message: "An item with this exact combination of filter type, dimensions, and unit of measure already exists.",
+        existingItem: {
+          _id: existingItem._id,
+          filterType: existingItem.filterType,
+          length: existingItem.length,
+          width: existingItem.width,
+          depth: existingItem.depth,
+          unitOfMeasure: existingItem.unitOfMeasure,
+        }
+      });
+    }
+
     const item = new Item({
       filterType,
       length,
@@ -117,6 +141,34 @@ export const updateItem = async (req: Request, res: Response) => {
       unitOfMeasure: item.unitOfMeasure,
       isActive: item.isActive,
     };
+
+    // Check for duplicate combination when updating dimensions or filter type
+    if (updates.some(update => ['filterType', 'length', 'width', 'depth', 'unitOfMeasure'].includes(update))) {
+      const newValues = { ...item.toObject(), ...req.body };
+      const existingItem = await Item.findOne({
+        _id: { $ne: req.params.id }, // Exclude current item
+        filterType: newValues.filterType,
+        length: newValues.length,
+        width: newValues.width,
+        depth: newValues.depth,
+        unitOfMeasure: newValues.unitOfMeasure,
+      });
+
+      if (existingItem) {
+        return res.status(409).json({
+          error: "Duplicate item",
+          message: "An item with this exact combination of filter type, dimensions, and unit of measure already exists.",
+          existingItem: {
+            _id: existingItem._id,
+            filterType: existingItem.filterType,
+            length: existingItem.length,
+            width: existingItem.width,
+            depth: existingItem.depth,
+            unitOfMeasure: existingItem.unitOfMeasure,
+          }
+        });
+      }
+    }
 
     updates.forEach((update) => {
       (item as any)[update] = req.body[update];

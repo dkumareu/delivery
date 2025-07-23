@@ -99,6 +99,21 @@ userSchema.pre("save", async function (next) {
 userSchema.methods.comparePassword = async function (
   candidatePassword: string
 ): Promise<boolean> {
+  // Add debugging to identify the issue
+  console.log("comparePassword called with:", {
+    candidatePassword: typeof candidatePassword,
+    candidatePasswordValue: candidatePassword,
+    thisPassword: typeof this.password,
+    thisPasswordValue: this.password,
+    thisPasswordKeys: this.password ? Object.keys(this.password) : 'null/undefined'
+  });
+  
+  // Check if password is valid
+  if (!this.password || typeof this.password !== 'string') {
+    console.error("Password field is invalid:", this.password);
+    return false;
+  }
+  
   return bcrypt.compare(candidatePassword, this.password);
 };
 

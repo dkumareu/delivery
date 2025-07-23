@@ -87,7 +87,16 @@ export const createOrder = async (req: Request, res: Response) => {
       frequency,
       totalNetAmount,
       totalGrossAmount,
+      status = OrderStatus.PENDING,
     } = req.body;
+
+    // Validate customer is present in request
+    if (!customer) {
+      return res.status(400).json({ 
+        error: "Customer is required",
+        message: "Customer must be provided in the request" 
+      });
+    }
 
     // Check if customer exists and is active
     const customerDoc = await Customer.findById(customer);
@@ -96,6 +105,86 @@ export const createOrder = async (req: Request, res: Response) => {
     }
     if (customerDoc.status !== CustomerStatus.ACTIVE) {
       return res.status(400).json({ error: "Customer is not active" });
+    }
+
+    // For draft orders, only validate customer and create a single draft order
+    if (status === OrderStatus.DRAFT) {
+      const orderNumber = await generateOrderNumber(new Date().getFullYear());
+      const order = new Order({
+        orderNumber,
+        customer: customerDoc._id,
+        items: items || [], // Allow empty items for draft
+        paymentMethod: paymentMethod || PaymentMethod.CASH,
+        driverNote,
+        startDate: startDate ? new Date(startDate) : new Date(),
+        endDate: endDate ? new Date(endDate) : new Date(),
+        frequency,
+        totalNetAmount: totalNetAmount || 0,
+        totalGrossAmount: totalGrossAmount || 0,
+        status: OrderStatus.DRAFT,
+        mainOrder: true,
+      });
+
+      await order.save();
+
+      // Get current user details for audit
+      const currentUser = await User.findById(req.user?.userId);
+      
+      // Log audit trail
+      if (req.user?.userId) {
+        await AuditService.logChange(
+          AuditService.createAuditLogData(
+            req.user.userId as string,
+            currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+            AuditAction.CREATE,
+            'orders',
+            (order._id as any).toString(),
+            [],
+            req
+          )
+        );
+      }
+
+      // Populate the response with customer details
+      const populatedOrder = await Order.findById(order._id)
+        .populate(
+          "customer",
+          "customerNumber name street houseNumber postalCode city latitude longitude"
+        )
+        .populate("items.item", "filterType length width depth unitOfMeasure");
+
+      res.status(201).json([populatedOrder]);
+      return;
+    }
+
+    // For non-draft orders, validate all mandatory fields with individual messages
+    const fieldValidations = [
+      { field: 'items', value: items, message: 'Items are required for non-draft orders' },
+      { field: 'startDate', value: startDate, message: 'Start date is required for non-draft orders' },
+      { field: 'endDate', value: endDate, message: 'End date is required for non-draft orders' },
+      { field: 'frequency', value: frequency, message: 'Frequency is required for non-draft orders' },
+      { field: 'totalNetAmount', value: totalNetAmount, message: 'Total net amount is required for non-draft orders' },
+      { field: 'totalGrossAmount', value: totalGrossAmount, message: 'Total gross amount is required for non-draft orders' }
+    ];
+
+    const missingFields = fieldValidations
+      .filter(validation => !validation.value)
+      .map(validation => ({ field: validation.field, message: validation.message }));
+
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        error: "Missing mandatory fields for non-draft orders",
+        message: missingFields[0].message, // Return the first missing field message
+        missingFields: missingFields
+      });
+    }
+
+    // Validate items array is not empty
+    if (!items || items.length === 0) {
+      return res.status(400).json({ 
+        error: "Items are required for non-draft orders",
+        message: "At least one item must be provided for non-draft orders" 
+      });
     }
 
     // Validate items and calculate totals
@@ -358,38 +447,99 @@ export const updateOrder = async (req: Request, res: Response) => {
       }
     }
 
-    // If items are being updated, process them
-    if (updates.includes("items")) {
-      const processedItems = await Promise.all(
-        req.body.items.map(async (item: any) => {
-          const itemDoc = await Item.findById(item.item._id);
-          if (!itemDoc) {
-            throw new Error(`Item ${item.item._id} not found`);
-          }
-          if (!itemDoc.isActive) {
-            throw new Error(`Item ${item.item._id} is not active`);
-          }
+    // For non-draft orders, validate mandatory fields when they are being updated
+    if (order.status !== OrderStatus.DRAFT) {
+      const fieldValidations = [
+        { 
+          field: 'items', 
+          value: updates.includes("items") ? req.body.items : order.items, 
+          message: 'Items are required for non-draft orders' 
+        },
+        { 
+          field: 'startDate', 
+          value: updates.includes("startDate") ? req.body.startDate : order.startDate, 
+          message: 'Start date is required for non-draft orders' 
+        },
+        { 
+          field: 'endDate', 
+          value: updates.includes("endDate") ? req.body.endDate : order.endDate, 
+          message: 'End date is required for non-draft orders' 
+        },
+        { 
+          field: 'frequency', 
+          value: updates.includes("frequency") ? req.body.frequency : order.frequency, 
+          message: 'Frequency is required for non-draft orders' 
+        },
+        { 
+          field: 'totalNetAmount', 
+          value: updates.includes("totalNetAmount") ? req.body.totalNetAmount : order.totalNetAmount, 
+          message: 'Total net amount is required for non-draft orders' 
+        },
+        { 
+          field: 'totalGrossAmount', 
+          value: updates.includes("totalGrossAmount") ? req.body.totalGrossAmount : order.totalGrossAmount, 
+          message: 'Total gross amount is required for non-draft orders' 
+        }
+      ];
 
-          return {
-            item: item.item._id,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            vatRate: item.vatRate,
-            netAmount: item.netAmount,
-            grossAmount: item.grossAmount,
-          };
-        })
-      );
+      const missingFields = fieldValidations
+        .filter(validation => !validation.value)
+        .map(validation => ({ field: validation.field, message: validation.message }));
 
-      req.body.items = processedItems;
+      if (missingFields.length > 0) {
+        return res.status(400).json({
+          error: "Missing mandatory fields for non-draft orders",
+          message: missingFields[0].message, // Return the first missing field message
+          missingFields: missingFields
+        });
+      }
     }
 
-    // Handle recurring order updates
+    // If items are being updated, process them
+    if (updates.includes("items")) {
+      // For draft orders, allow empty items
+      if (order.status === OrderStatus.DRAFT && (!req.body.items || req.body.items.length === 0)) {
+        req.body.items = [];
+      } else {
+        // For non-draft orders, validate items
+        if (!req.body.items || req.body.items.length === 0) {
+          return res.status(400).json({ 
+            error: "Items are required for non-draft orders",
+            message: "At least one item must be provided for non-draft orders" 
+          });
+        }
+
+        const processedItems = await Promise.all(
+          req.body.items.map(async (item: any) => {
+            const itemDoc = await Item.findById(item.item._id);
+            if (!itemDoc) {
+              throw new Error(`Item ${item.item._id} not found`);
+            }
+            if (!itemDoc.isActive) {
+              throw new Error(`Item ${item.item._id} is not active`);
+            }
+
+            return {
+              item: item.item._id,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              vatRate: item.vatRate,
+              netAmount: item.netAmount,
+              grossAmount: item.grossAmount,
+            };
+          })
+        );
+
+        req.body.items = processedItems;
+      }
+    }
+
+    // Handle recurring order updates (skip for draft orders)
     const isRecurringUpdate = updates.some((update) =>
       ["frequency", "startDate", "endDate"].includes(update)
     );
 
-    if (isRecurringUpdate && order.mainOrder) {
+    if (isRecurringUpdate && order.mainOrder && order.status !== OrderStatus.DRAFT) {
       // Delete all existing recurring orders that are in pending state
       await Order.deleteMany({
         originalOrderNumber: order.orderNumber,
@@ -457,7 +607,7 @@ export const updateOrder = async (req: Request, res: Response) => {
           createdOrders.push(recurringOrder);
         }
       }
-    } else if (isRecurringUpdate && !order.mainOrder) {
+    } else if (isRecurringUpdate && !order.mainOrder && order.status !== OrderStatus.DRAFT) {
       // If updating a recurring order, update the main order instead
       const mainOrder = await Order.findOne({
         orderNumber: order.originalOrderNumber,

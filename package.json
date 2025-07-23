@@ -8,7 +8,8 @@
     "dev": "nodemon --watch src/**/*.ts --exec ts-node src/server.ts",
     "build": "tsc",
     "create-demo-user": "ts-node scripts/createDemoUser.ts",
-    "add-audit-permissions": "ts-node scripts/addAuditPermissions.ts"
+    "add-audit-permissions": "ts-node scripts/addAuditPermissions.ts",
+    "fix-user-passwords": "ts-node scripts/fixUserPasswords.ts"
   },
   "keywords": [],
   "author": "",

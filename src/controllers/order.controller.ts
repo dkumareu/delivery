@@ -14,6 +14,7 @@ import { handleError } from "../utils/errorHandler";
 import { AuditService } from "../utils/auditService";
 import { AuditAction } from "../models/audit.model";
 import { User } from "../models/user.model";
+import { S3Service } from "../utils/s3Service";
 
 const generateOrderNumber = async (year: number) => {
   const lastOrder = await Order.findOne({
@@ -56,6 +57,12 @@ const generateRecurringDates = (
         break;
       case "biweekly":
         currentDate.setDate(currentDate.getDate() + 14);
+        break;
+      case "every_3rd_week":
+        currentDate.setDate(currentDate.getDate() + 21); // 3 weeks = 21 days
+        break;
+      case "every_5th_week":
+        currentDate.setDate(currentDate.getDate() + 35); // 5 weeks = 35 days
         break;
       case "monthly":
         currentDate.setMonth(currentDate.getMonth() + 1);
@@ -909,5 +916,108 @@ export const updateDeliverySequence = async (req: Request, res: Response) => {
     });
   } catch (error) {
     handleError(error, res, "Error updating delivery sequence");
+  }
+};
+
+// Image upload endpoints
+export const generateImageUploadUrl = async (req: Request, res: Response) => {
+  try {
+    const { orderId, imageType, fileName, contentType } = req.body;
+
+    // Validate required fields
+    if (!orderId || !imageType || !fileName || !contentType) {
+      return res.status(400).json({
+        error: "Missing required fields",
+        message: "orderId, imageType, fileName, and contentType are required",
+      });
+    }
+
+    // Validate image type
+    if (!['before', 'after'].includes(imageType)) {
+      return res.status(400).json({
+        error: "Invalid image type",
+        message: "imageType must be 'before' or 'after'",
+      });
+    }
+
+    // Validate order exists
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Generate unique filename
+    const uniqueFileName = S3Service.generateFileName(orderId, imageType, fileName);
+
+    // Generate pre-signed URL
+    const presignedUrl = await S3Service.generatePresignedUrl(uniqueFileName, contentType);
+
+    res.json({
+      presignedUrl,
+      fileName: uniqueFileName,
+      message: "Upload URL generated successfully",
+    });
+  } catch (error) {
+    handleError(error, res, "Error generating upload URL");
+  }
+};
+
+export const updateOrderImages = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const { beforeImage, afterImage } = req.body;
+
+    // Validate order exists
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Store old values for audit
+    const oldValues = {
+      beforeImage: order.beforeImage,
+      afterImage: order.afterImage,
+    };
+
+    // Update images
+    const updates: any = {};
+    if (beforeImage !== undefined) updates.beforeImage = beforeImage;
+    if (afterImage !== undefined) updates.afterImage = afterImage;
+
+    // Update the order
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      { $set: updates },
+      { new: true }
+    ).populate(
+      "customer",
+      "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
+    ).populate("items.item", "filterType length width depth unitOfMeasure");
+
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      const changes = AuditService.compareObjects(oldValues, updatedOrder?.toObject() || {});
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.UPDATE,
+          'orders',
+          (updatedOrder?._id as any).toString(),
+          changes,
+          req
+        )
+      );
+    }
+
+    res.json({
+      message: "Order images updated successfully",
+      order: updatedOrder,
+    });
+  } catch (error) {
+    handleError(error, res, "Error updating order images");
   }
 };

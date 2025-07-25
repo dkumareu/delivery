@@ -28,6 +28,8 @@ export enum Frequency {
   WEEKDAYS = "weekdays",
   WEEKLY = "weekly",
   BIWEEKLY = "biweekly",
+  EVERY_3RD_WEEK = "every_3rd_week",
+  EVERY_5TH_WEEK = "every_5th_week",
   MONTHLY = "monthly",
   QUARTERLY = "quarterly",
   SEMI_ANNUALLY = "semi_annually",
@@ -60,6 +62,8 @@ export interface IOrder extends Document {
   originalOrderNumber?: string;
   deliverySequence?: number;
   lastUpdated?: Date;
+  beforeImage?: string;
+  afterImage?: string;
 }
 
 const orderItemSchema = new Schema<IOrderItem>({
@@ -162,6 +166,14 @@ const orderSchema = new Schema<IOrder>(
     },
     lastUpdated: {
       type: Date,
+    },
+    beforeImage: {
+      type: String,
+      trim: true,
+    },
+    afterImage: {
+      type: String,
+      trim: true,
     },
   },
   {

@@ -17,6 +17,11 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       status: { $ne: "deleted" }
     });
 
+    // Get active customers
+    const activeCustomers = await Customer.countDocuments({ status: "active" });
+    // Get inactive customers
+    const inactiveCustomers = await Customer.countDocuments({ status: "inactive" });
+
     // Get total orders for today
     const totalOrdersToday = await Order.countDocuments({
       startDate: {
@@ -33,6 +38,11 @@ export const getDashboardStats = async (req: Request, res: Response) => {
       }
     });
 
+    // Get draft orders
+    const draftOrders = await Order.countDocuments({ status: "draft" });
+    // Get active orders (not draft, not deleted/cancelled)
+    const activeOrders = await Order.countDocuments({ status: { $nin: ["draft", "cancelled", "deleted"] } });
+
     // Get total items (active only)
     const totalItems = await Item.countDocuments({
       isActive: true
@@ -45,8 +55,12 @@ export const getDashboardStats = async (req: Request, res: Response) => {
 
     const stats = {
       totalCustomers,
+      activeCustomers,
+      inactiveCustomers,
       totalOrdersToday,
       totalOrdersMonth,
+      draftOrders,
+      activeOrders,
       totalItems,
       totalDrivers
     };

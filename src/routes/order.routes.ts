@@ -11,6 +11,8 @@ import {
   assignOrdersToDriver,
   updateDeliverySequence,
   updateOrderStatus,
+  generateImageUploadUrl,
+  updateOrderImages,
 } from "../controllers/order.controller";
 
 const router = express.Router();
@@ -62,5 +64,18 @@ router.patch(
   updateOrder
 );
 router.delete("/:id", checkRole([UserRole.ADMIN]), deleteOrder);
+
+// Image upload routes
+router.post(
+  "/generate-upload-url",
+  checkRole([UserRole.ADMIN, UserRole.BACK_OFFICE]),
+  generateImageUploadUrl
+);
+
+router.patch(
+  "/:orderId/images",
+  checkRole([UserRole.ADMIN, UserRole.BACK_OFFICE]),
+  updateOrderImages
+);
 
 export default router;

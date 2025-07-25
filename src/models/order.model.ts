@@ -62,8 +62,8 @@ export interface IOrder extends Document {
   originalOrderNumber?: string;
   deliverySequence?: number;
   lastUpdated?: Date;
-  beforeImage?: string;
-  afterImage?: string;
+  beforeImages?: string[];
+  afterImages?: string[];
 }
 
 const orderItemSchema = new Schema<IOrderItem>({
@@ -167,13 +167,25 @@ const orderSchema = new Schema<IOrder>(
     lastUpdated: {
       type: Date,
     },
-    beforeImage: {
-      type: String,
-      trim: true,
+    beforeImages: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function(v: string[]) {
+          return v.length <= 10;
+        },
+        message: 'Cannot have more than 10 before images'
+      }
     },
-    afterImage: {
-      type: String,
-      trim: true,
+    afterImages: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function(v: string[]) {
+          return v.length <= 10;
+        },
+        message: 'Cannot have more than 10 after images'
+      }
     },
   },
   {

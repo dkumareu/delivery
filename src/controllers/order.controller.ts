@@ -226,8 +226,13 @@ export const createOrder = async (req: Request, res: Response) => {
     // Create orders for each delivery date
     const createdOrders = [];
 
-    const orderNumber = await generateOrderNumber(new Date().getFullYear());
+    // Generate order number only once for the main order
+    const mainOrderNumber = await generateOrderNumber(new Date().getFullYear());
+    
     for (let i = 0; i < deliveryDates.length; i++) {
+      // For recurring orders, each order gets a unique order number
+      const orderNumber = i === 0 ? mainOrderNumber : await generateOrderNumber(new Date().getFullYear());
+      
       const order = new Order({
         orderNumber,
         customer: customerDoc._id,
@@ -235,13 +240,13 @@ export const createOrder = async (req: Request, res: Response) => {
         paymentMethod,
         driverNote,
         startDate: deliveryDates[i],
-        endDate: deliveryDates[i], // For recurring orders, start and end date are the same
+        endDate: i === 0 ? new Date(endDate) : deliveryDates[i], // For recurring orders, start and end date are the same
         frequency,
         totalNetAmount,
         totalGrossAmount,
         status: OrderStatus.PENDING,
         mainOrder: i === 0, // First order is the main order
-        originalOrderNumber: i === 0 ? null : orderNumber, // Reference to main order
+        originalOrderNumber: i === 0 ? null : mainOrderNumber, // Reference to main order
       });
 
       await order.save();
@@ -946,6 +951,15 @@ export const generateImageUploadUrl = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
+    // Check if we've reached the limit for this image type
+    const currentImages = imageType === 'before' ? order.beforeImages : order.afterImages;
+    if (currentImages && currentImages.length >= 10) {
+      return res.status(400).json({
+        error: "Image limit reached",
+        message: `Cannot upload more than 10 ${imageType} images`,
+      });
+    }
+
     // Generate unique filename
     const uniqueFileName = S3Service.generateFileName(orderId, imageType, fileName);
 
@@ -965,7 +979,7 @@ export const generateImageUploadUrl = async (req: Request, res: Response) => {
 export const updateOrderImages = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
-    const { beforeImage, afterImage } = req.body;
+    const { beforeImages, afterImages, action, imageType, fileName } = req.body;
 
     // Validate order exists
     const order = await Order.findById(orderId);
@@ -975,19 +989,66 @@ export const updateOrderImages = async (req: Request, res: Response) => {
 
     // Store old values for audit
     const oldValues = {
-      beforeImage: order.beforeImage,
-      afterImage: order.afterImage,
+      beforeImages: order.beforeImages,
+      afterImages: order.afterImages,
     };
 
-    // Update images
-    const updates: any = {};
-    if (beforeImage !== undefined) updates.beforeImage = beforeImage;
-    if (afterImage !== undefined) updates.afterImage = afterImage;
+    let updates: any = {};
+
+    // Handle different actions
+    if (action === 'add' && imageType && fileName) {
+      // Add a single image
+      const fieldName = imageType === 'before' ? 'beforeImages' : 'afterImages';
+      const currentImages = order[fieldName] || [];
+      
+      if (currentImages.length >= 10) {
+        return res.status(400).json({
+          error: "Image limit reached",
+          message: `Cannot upload more than 10 ${imageType} images`,
+        });
+      }
+
+      updates = {
+        $push: { [fieldName]: fileName }
+      };
+    } else if (action === 'remove' && imageType && fileName) {
+      // Remove a single image
+      const fieldName = imageType === 'before' ? 'beforeImages' : 'afterImages';
+      updates = {
+        $pull: { [fieldName]: fileName }
+      };
+    } else if (beforeImages !== undefined || afterImages !== undefined) {
+      // Replace entire arrays (for backward compatibility or bulk updates)
+      if (beforeImages !== undefined) {
+        if (beforeImages.length > 10) {
+          return res.status(400).json({
+            error: "Too many before images",
+            message: "Cannot have more than 10 before images",
+          });
+        }
+        updates.beforeImages = beforeImages;
+      }
+      
+      if (afterImages !== undefined) {
+        if (afterImages.length > 10) {
+          return res.status(400).json({
+            error: "Too many after images",
+            message: "Cannot have more than 10 after images",
+          });
+        }
+        updates.afterImages = afterImages;
+      }
+    } else {
+      return res.status(400).json({
+        error: "Invalid request",
+        message: "Must provide either action+imageType+fileName or beforeImages/afterImages arrays",
+      });
+    }
 
     // Update the order
     const updatedOrder = await Order.findByIdAndUpdate(
       orderId,
-      { $set: updates },
+      updates,
       { new: true }
     ).populate(
       "customer",

@@ -4,10 +4,9 @@ import { IItem } from "./item.model";
 import { IDriver } from "./driver.model";
 
 export enum PaymentMethod {
-  CASH = "cash",
+  CASH_PAYMENT = "cash_payment",
   BANK_TRANSFER = "bank_transfer",
-  DIRECT_DEBIT = "direct_debit",
-  DELIVERY_NOTE = "delivery_note",
+  MONTHLY_TRANSFER = "monthly_transfer",
 }
 
 export enum OrderStatus {

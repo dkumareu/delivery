@@ -121,7 +121,7 @@ export const createOrder = async (req: Request, res: Response) => {
         orderNumber,
         customer: customerDoc._id,
         items: items || [], // Allow empty items for draft
-        paymentMethod: paymentMethod || PaymentMethod.CASH,
+        paymentMethod: paymentMethod || PaymentMethod.CASH_PAYMENT,
         driverNote,
         startDate: startDate ? new Date(startDate) : new Date(),
         endDate: endDate ? new Date(endDate) : new Date(),
@@ -980,6 +980,8 @@ export const updateOrderImages = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
     const { beforeImages, afterImages, action, imageType, fileName } = req.body;
+    
+
 
     // Validate order exists
     const order = await Order.findById(orderId);
@@ -996,7 +998,7 @@ export const updateOrderImages = async (req: Request, res: Response) => {
     let updates: any = {};
 
     // Handle different actions
-    if (action === 'add' && imageType && fileName) {
+    if (action === 'add' && imageType && fileName && (imageType === 'before' || imageType === 'after')) {
       // Add a single image
       const fieldName = imageType === 'before' ? 'beforeImages' : 'afterImages';
       const currentImages = order[fieldName] || [];
@@ -1011,7 +1013,7 @@ export const updateOrderImages = async (req: Request, res: Response) => {
       updates = {
         $push: { [fieldName]: fileName }
       };
-    } else if (action === 'remove' && imageType && fileName) {
+    } else if (action === 'remove' && imageType && fileName && (imageType === 'before' || imageType === 'after')) {
       // Remove a single image
       const fieldName = imageType === 'before' ? 'beforeImages' : 'afterImages';
       updates = {

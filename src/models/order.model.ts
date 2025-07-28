@@ -7,6 +7,8 @@ export enum PaymentMethod {
   CASH_PAYMENT = "cash_payment",
   BANK_TRANSFER = "bank_transfer",
   MONTHLY_TRANSFER = "monthly_transfer",
+  SIX_WEEKS = "6kw",
+  EIGHT_WEEKS = "8kw",
 }
 
 export enum OrderStatus {

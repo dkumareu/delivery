@@ -15,20 +15,7 @@ import { AuditService } from "../utils/auditService";
 import { AuditAction } from "../models/audit.model";
 import { User } from "../models/user.model";
 import { S3Service } from "../utils/s3Service";
-
-const generateOrderNumber = async (year: number) => {
-  const lastOrder = await Order.findOne({
-    orderNumber: new RegExp(`A-${year}-`),
-  }).sort({ orderNumber: -1 });
-
-  let sequence = 1;
-  if (lastOrder) {
-    const lastSequence = parseInt(lastOrder.orderNumber.split("-")[2]);
-    sequence = lastSequence + 1;
-  }
-
-  return `A-${year}-${sequence.toString().padStart(4, "0")}`;
-};
+import { generateUniqueOrderNumbers, generateSingleOrderNumber } from "../utils/orderNumberUtils";
 
 const generateRecurringDates = (
   startDate: Date,
@@ -122,7 +109,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // For draft orders, only validate customer and create a single draft order
     if (status === OrderStatus.DRAFT) {
-      const orderNumber = await generateOrderNumber(new Date().getFullYear());
+      const orderNumber = await generateSingleOrderNumber(new Date().getFullYear());
       const order = new Order({
         orderNumber,
         customer: customerDoc._id,
@@ -232,15 +219,12 @@ export const createOrder = async (req: Request, res: Response) => {
     // Create orders for each delivery date
     const createdOrders = [];
 
-    // Generate order number only once for the main order
-    const mainOrderNumber = await generateOrderNumber(new Date().getFullYear());
+    // Generate all order numbers at once for better performance
+    const orderNumbers = await generateUniqueOrderNumbers(new Date().getFullYear(), deliveryDates.length);
     
     for (let i = 0; i < deliveryDates.length; i++) {
-      // For recurring orders, each order gets a unique order number
-      const orderNumber = i === 0 ? mainOrderNumber : await generateOrderNumber(new Date().getFullYear());
-      
       const order = new Order({
-        orderNumber,
+        orderNumber: orderNumbers[i],
         customer: customerDoc._id,
         items: processedItems,
         paymentMethod,
@@ -252,7 +236,7 @@ export const createOrder = async (req: Request, res: Response) => {
         totalGrossAmount,
         status: OrderStatus.PENDING,
         mainOrder: i === 0, // First order is the main order
-        originalOrderNumber: i === 0 ? null : mainOrderNumber, // Reference to main order
+        originalOrderNumber: i === 0 ? null : orderNumbers[0], // Reference to main order
       });
 
       await order.save();
@@ -590,12 +574,15 @@ export const updateOrder = async (req: Request, res: Response) => {
 
         // Create new recurring orders
         const createdOrders = [];
+        
+        // Generate all order numbers at once for the new recurring orders
+        const newRecurringOrderCount = deliveryDates.length - 1; // Exclude the first date (main order)
+        const orderNumbers = await generateUniqueOrderNumbers(new Date().getFullYear(), newRecurringOrderCount);
+        
         for (let i = 0; i < deliveryDates.length; i++) {
           if (i === 0) continue; // Skip first date as it's the main order
 
-          const orderNumber = await generateOrderNumber(
-            new Date().getFullYear()
-          );
+          const orderNumber = orderNumbers[i - 1]; // Use the pre-generated order number
 
           const recurringOrder = new Order({
             orderNumber,

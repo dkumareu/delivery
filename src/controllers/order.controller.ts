@@ -90,6 +90,11 @@ export const createOrder = async (req: Request, res: Response) => {
       status = OrderStatus.PENDING,
     } = req.body;
 
+    console.log('=== CREATE ORDER DEBUG ===');
+    console.log('Received status:', status);
+    console.log('Default status:', OrderStatus.PENDING);
+    console.log('Full request body:', JSON.stringify(req.body, null, 2));
+
     // Validate customer is present in request
     if (!customer) {
       return res.status(400).json({ 
@@ -109,6 +114,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // For draft orders, only validate customer and create a single draft order
     if (status === OrderStatus.DRAFT) {
+      console.log('Creating DRAFT order');
       const orderNumber = await generateSingleOrderNumber(new Date().getFullYear());
       const order = new Order({
         orderNumber,
@@ -125,6 +131,7 @@ export const createOrder = async (req: Request, res: Response) => {
         mainOrder: true,
       });
 
+      console.log('Draft order status:', order.status);
       await order.save();
 
       // Get current user details for audit
@@ -222,6 +229,8 @@ export const createOrder = async (req: Request, res: Response) => {
     // Generate all order numbers at once for better performance
     const orderNumbers = await generateUniqueOrderNumbers(new Date().getFullYear(), deliveryDates.length);
     
+    console.log('Creating non-draft orders with status:', status);
+    
     for (let i = 0; i < deliveryDates.length; i++) {
       const order = new Order({
         orderNumber: orderNumbers[i],
@@ -239,6 +248,7 @@ export const createOrder = async (req: Request, res: Response) => {
         originalOrderNumber: i === 0 ? null : orderNumbers[0], // Reference to main order
       });
 
+      console.log(`Order ${i + 1} status:`, order.status);
       await order.save();
       createdOrders.push(order);
     }
@@ -674,9 +684,12 @@ export const deleteOrder = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // Only allow deletion of pending orders
-    if (order.status !== OrderStatus.PENDING) {
-      return res.status(400).json({ error: "Can only delete pending orders" });
+    // Allow deletion of pending and draft orders
+    if (order.status !== OrderStatus.PENDING && order.status !== OrderStatus.DRAFT) {
+      return res.status(400).json({ 
+        error: "Can only delete pending or draft orders",
+        message: "Only orders with 'pending' or 'draft' status can be deleted"
+      });
     }
 
     // Get current user details for audit

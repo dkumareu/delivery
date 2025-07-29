@@ -99,7 +99,7 @@ export const getCustomers = async (req: Request, res: Response) => {
       query.status = status;
     }
 
-    const customers = await Customer.find(query).sort({ name: 1 });
+    const customers = await Customer.find(query).sort({ createdAt: -1 });
     res.json(customers);
   } catch (error) {
     handleError(error, res, "Error fetching customers");

@@ -9,7 +9,8 @@
     "build": "tsc",
     "create-demo-user": "ts-node scripts/createDemoUser.ts",
     "add-audit-permissions": "ts-node scripts/addAuditPermissions.ts",
-    "fix-user-passwords": "ts-node scripts/fixUserPasswords.ts"
+    "fix-user-passwords": "ts-node scripts/fixUserPasswords.ts",
+    "delete-orphaned-orders": "ts-node scripts/deleteOrphanedOrders.ts"
   },
   "keywords": [],
   "author": "",

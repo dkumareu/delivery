@@ -352,9 +352,9 @@ export const getOrders = async (req: Request, res: Response) => {
     }
 
     // Determine sort order - if filtering by driver and date, sort by delivery sequence
-    let sortOrder: any = { startDate: -1 };
+    let sortOrder: any = { createdAt: -1 };
     if (driver && date) {
-      sortOrder = { deliverySequence: 1, startDate: -1 };
+      sortOrder = { deliverySequence: 1, createdAt: -1 };
     }
 
     const orders = await Order.find(query)
@@ -551,7 +551,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       ["frequency", "startDate", "endDate"].includes(update)
     );
 
-    if (isRecurringUpdate && order.mainOrder && order.status !== OrderStatus.DRAFT) {
+    if (isRecurringUpdate && order.mainOrder) {
       // Delete all existing recurring orders that are in pending state
       await Order.deleteMany({
         originalOrderNumber: order.orderNumber,
@@ -695,24 +695,66 @@ export const deleteOrder = async (req: Request, res: Response) => {
     // Get current user details for audit
     const currentUser = await User.findById(req.user?.userId);
 
-    await order.deleteOne();
+    let ordersToDelete = [order];
+    let deletedCount = 1;
 
-    // Log audit trail
-    if (req.user?.userId) {
-      await AuditService.logChange(
-        AuditService.createAuditLogData(
-          req.user.userId as string,
-          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
-          AuditAction.DELETE,
-          'orders',
-          (order._id as any).toString(),
-          [],
-          req
-        )
-      );
+    // If this is a main order, also delete all its recurring orders
+    if (order.mainOrder) {
+      const recurringOrders = await Order.find({
+        originalOrderNumber: order.orderNumber,
+        mainOrder: false
+      });
+      
+      if (recurringOrders.length > 0) {
+        ordersToDelete = [...ordersToDelete, ...recurringOrders];
+        deletedCount += recurringOrders.length;
+        console.log(`Deleting main order ${order.orderNumber} and ${recurringOrders.length} recurring orders`);
+      }
+    }
+    // If this is a recurring order, also delete the main order and all other recurring orders
+    else if (order.originalOrderNumber) {
+      const mainOrder = await Order.findOne({
+        orderNumber: order.originalOrderNumber,
+        mainOrder: true
+      });
+      
+      if (mainOrder) {
+        const allRecurringOrders = await Order.find({
+          originalOrderNumber: order.originalOrderNumber,
+          mainOrder: false
+        });
+        
+        ordersToDelete = [mainOrder, ...allRecurringOrders];
+        deletedCount = 1 + allRecurringOrders.length;
+        console.log(`Deleting main order ${mainOrder.orderNumber} and ${allRecurringOrders.length} recurring orders`);
+      }
     }
 
-    res.json({ message: "Order deleted successfully" });
+    // Delete all orders
+    const orderIds = ordersToDelete.map(o => o._id);
+    await Order.deleteMany({ _id: { $in: orderIds } });
+
+    // Log audit trail for each deleted order
+    if (req.user?.userId) {
+      for (const deletedOrder of ordersToDelete) {
+        await AuditService.logChange(
+          AuditService.createAuditLogData(
+            req.user.userId as string,
+            currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+            AuditAction.DELETE,
+            'orders',
+            (deletedOrder._id as any).toString(),
+            [],
+            req
+          )
+        );
+      }
+    }
+
+    res.json({ 
+      message: `Order${deletedCount > 1 ? 's' : ''} deleted successfully`,
+      deletedCount: deletedCount
+    });
   } catch (error) {
     res.status(400).json({ error: "Error deleting order" });
   }

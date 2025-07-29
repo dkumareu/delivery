@@ -42,7 +42,7 @@ const generateRecurringDates = (
       case "weekly":
         currentDate.setDate(currentDate.getDate() + 7);
         break;
-      case "biweekly":
+      case "every_2nd_week":
         currentDate.setDate(currentDate.getDate() + 14);
         break;
       case "every_3rd_week":
@@ -56,6 +56,9 @@ const generateRecurringDates = (
         break;
       case "8_weeks":
         currentDate.setDate(currentDate.getDate() + 56); // 8 weeks = 56 days
+        break;
+      case "twice_in_a_week":
+        currentDate.setDate(currentDate.getDate() + 3.5); // Twice a week = every 3.5 days
         break;
       case "monthly":
         currentDate.setMonth(currentDate.getMonth() + 1);

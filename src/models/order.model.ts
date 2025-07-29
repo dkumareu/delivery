@@ -7,8 +7,6 @@ export enum PaymentMethod {
   CASH_PAYMENT = "cash_payment",
   BANK_TRANSFER = "bank_transfer",
   MONTHLY_TRANSFER = "monthly_transfer",
-  SIX_WEEKS = "6kw",
-  EIGHT_WEEKS = "8kw",
 }
 
 export enum OrderStatus {
@@ -31,6 +29,8 @@ export enum Frequency {
   BIWEEKLY = "biweekly",
   EVERY_3RD_WEEK = "every_3rd_week",
   EVERY_5TH_WEEK = "every_5th_week",
+  SIX_WEEKS = "6_weeks",
+  EIGHT_WEEKS = "8_weeks",
   MONTHLY = "monthly",
   QUARTERLY = "quarterly",
   SEMI_ANNUALLY = "semi_annually",

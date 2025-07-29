@@ -64,6 +64,12 @@ const generateRecurringDates = (
       case "every_5th_week":
         currentDate.setDate(currentDate.getDate() + 35); // 5 weeks = 35 days
         break;
+      case "6_weeks":
+        currentDate.setDate(currentDate.getDate() + 42); // 6 weeks = 42 days
+        break;
+      case "8_weeks":
+        currentDate.setDate(currentDate.getDate() + 56); // 8 weeks = 56 days
+        break;
       case "monthly":
         currentDate.setMonth(currentDate.getMonth() + 1);
         break;

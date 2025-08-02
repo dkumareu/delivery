@@ -8,11 +8,14 @@ import {
   updateOrder,
   deleteOrder,
   getUnassignedOrders,
+  getMainOrdersByCustomer,
   assignOrdersToDriver,
   updateDeliverySequence,
   updateOrderStatus,
   generateImageUploadUrl,
   updateOrderImages,
+  updateOrderArticleNumber,
+  updateOrderAssignedDriver,
 } from "../controllers/order.controller";
 
 const router = express.Router();
@@ -34,6 +37,13 @@ router.get(
   getUnassignedOrders
 );
 
+// Get main orders by customer
+router.get(
+  "/customer/:customerId/main",
+  checkRole([UserRole.ADMIN, UserRole.BACK_OFFICE]),
+  getMainOrdersByCustomer
+);
+
 // Assign orders to driver
 router.post(
   "/assign-driver",
@@ -53,6 +63,20 @@ router.patch(
   "/:orderId/status",
   checkRole([UserRole.ADMIN, UserRole.BACK_OFFICE]),
   updateOrderStatus
+);
+
+// Update order article number
+router.patch(
+  "/:orderId/article-number",
+  checkRole([UserRole.ADMIN, UserRole.BACK_OFFICE]),
+  updateOrderArticleNumber
+);
+
+// Update order assigned driver
+router.patch(
+  "/:orderId/assigned-driver",
+  checkRole([UserRole.ADMIN, UserRole.BACK_OFFICE]),
+  updateOrderAssignedDriver
 );
 
 // General routes

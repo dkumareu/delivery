@@ -36,6 +36,7 @@ export enum Frequency {
   QUARTERLY = "quarterly",
   SEMI_ANNUALLY = "semi_annually",
   ANNUALLY = "annually",
+  ONE_TIME = "one_time",
 }
 
 export interface IOrderItem {
@@ -53,6 +54,7 @@ export interface IOrder extends Document {
   items: IOrderItem[];
   paymentMethod: PaymentMethod;
   driverNote?: string;
+  articleNumber?: string;
   startDate: Date;
   endDate?: Date;
   frequency?: Frequency;
@@ -87,7 +89,13 @@ const orderItemSchema = new Schema<IOrderItem>({
   vatRate: {
     type: Number,
     required: true,
-    min: 0,
+    enum: [0, 19],
+    validate: {
+      validator: function(v: number) {
+        return v === 0 || v === 19;
+      },
+      message: 'VAT rate must be either 0 (Brutto) or 19 (Netto)'
+    }
   },
   netAmount: {
     type: Number,
@@ -121,6 +129,10 @@ const orderSchema = new Schema<IOrder>(
       required: true,
     },
     driverNote: {
+      type: String,
+      trim: true,
+    },
+    articleNumber: {
       type: String,
       trim: true,
     },

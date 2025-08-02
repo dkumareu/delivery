@@ -20,6 +20,7 @@ export const createCustomer = async (req: Request, res: Response) => {
       status,
       vacationStartDate,
       vacationEndDate,
+      visitTimeRange,
       latitude,
       longitude,
     } = req.body;
@@ -44,6 +45,7 @@ export const createCustomer = async (req: Request, res: Response) => {
       status: status || CustomerStatus.ACTIVE,
       vacationStartDate,
       vacationEndDate,
+      visitTimeRange,
       latitude,
       longitude,
     });
@@ -144,6 +146,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
     "status",
     "vacationStartDate",
     "vacationEndDate",
+    "visitTimeRange",
     "latitude",
     "longitude",
   ];
@@ -180,6 +183,7 @@ export const updateCustomer = async (req: Request, res: Response) => {
       status: customer.status,
       vacationStartDate: customer.vacationStartDate,
       vacationEndDate: customer.vacationEndDate,
+      visitTimeRange: customer.visitTimeRange,
       latitude: customer.latitude,
       longitude: customer.longitude,
     };

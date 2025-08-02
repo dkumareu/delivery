@@ -72,6 +72,9 @@ const generateRecurringDates = (
       case "annually":
         currentDate.setFullYear(currentDate.getFullYear() + 1);
         break;
+      case "one_time":
+        // For one-time orders, only create the initial order and don't continue
+        return dates;
     }
   }
 
@@ -85,6 +88,7 @@ export const createOrder = async (req: Request, res: Response) => {
       items,
       paymentMethod,
       driverNote,
+      articleNumber,
       startDate,
       endDate,
       frequency,
@@ -125,6 +129,7 @@ export const createOrder = async (req: Request, res: Response) => {
         items: items || [], // Allow empty items for draft
         paymentMethod: paymentMethod || PaymentMethod.CASH_PAYMENT,
         driverNote,
+        articleNumber,
         startDate: startDate ? new Date(startDate) : new Date(),
         endDate: endDate ? new Date(endDate) : new Date(),
         frequency,
@@ -159,7 +164,7 @@ export const createOrder = async (req: Request, res: Response) => {
       const populatedOrder = await Order.findById(order._id)
         .populate(
           "customer",
-          "customerNumber name street houseNumber postalCode city latitude longitude"
+          "customerNumber name street houseNumber postalCode city latitude longitude visitTimeRange"
         )
         .populate("items.item", "filterType length width depth unitOfMeasure");
 
@@ -241,6 +246,7 @@ export const createOrder = async (req: Request, res: Response) => {
         items: processedItems,
         paymentMethod,
         driverNote,
+        articleNumber,
         startDate: deliveryDates[i],
         endDate: i === 0 ? new Date(endDate) : deliveryDates[i], // For recurring orders, start and end date are the same
         frequency,
@@ -282,7 +288,7 @@ export const createOrder = async (req: Request, res: Response) => {
     })
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city latitude longitude"
+        "customerNumber name street houseNumber postalCode city latitude longitude visitTimeRange"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure");
 
@@ -363,7 +369,7 @@ export const getOrders = async (req: Request, res: Response) => {
     const orders = await Order.find(query)
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
+        "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude visitTimeRange"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure")
       .populate(
@@ -383,7 +389,7 @@ export const getOrderById = async (req: Request, res: Response) => {
     const order = await Order.findById(req.params.id)
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
+        "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude visitTimeRange"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure")
       .populate(
@@ -411,6 +417,7 @@ export const updateOrder = async (req: Request, res: Response) => {
     "items",
     "paymentMethod",
     "driverNote",
+    "articleNumber",
     "startDate",
     "endDate",
     "frequency",
@@ -442,6 +449,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       items: order.items,
       paymentMethod: order.paymentMethod,
       driverNote: order.driverNote,
+      articleNumber: order.articleNumber,
       startDate: order.startDate,
       endDate: order.endDate,
       frequency: order.frequency,
@@ -607,6 +615,9 @@ export const updateOrder = async (req: Request, res: Response) => {
             driverNote: updates.includes("driverNote")
               ? req.body.driverNote
               : order.driverNote,
+            articleNumber: updates.includes("articleNumber")
+              ? req.body.articleNumber
+              : order.articleNumber,
             startDate: deliveryDates[i],
             endDate: deliveryDates[i],
             frequency: newFrequency,
@@ -670,7 +681,7 @@ export const updateOrder = async (req: Request, res: Response) => {
     const updatedOrder = await Order.findById(order._id)
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city latitude longitude"
+        "customerNumber name street houseNumber postalCode city latitude longitude visitTimeRange"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure");
 
@@ -763,9 +774,48 @@ export const deleteOrder = async (req: Request, res: Response) => {
   }
 };
 
+export const getMainOrdersByCustomer = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+    
+    const query: any = { 
+      customer: customerId,
+      mainOrder: true 
+    };
+
+    const orders = await Order.find(query)
+      .populate(
+        "customer",
+        "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude visitTimeRange"
+      )
+      .populate("items.item", "filterType length width depth unitOfMeasure")
+      .populate(
+        "assignedDriver",
+        "name street houseNumber postalCode city driverNumber email mobileNumber"
+      )
+      .sort({ createdAt: -1 });
+    
+    res.json(orders);
+  } catch (error) {
+    handleError(error, res, "Error fetching main orders");
+  }
+};
+
 export const getUnassignedOrders = async (req: Request, res: Response) => {
   try {
-    const orders = await Order.find({ assignedDriver: null })
+    const { startDate, endDate } = req.query;
+    
+    const query: any = { assignedDriver: null };
+
+    // Add date range filter if provided
+    if (startDate && endDate) {
+      query.startDate = {
+        $gte: new Date(startDate as string),
+        $lte: new Date(endDate as string),
+      };
+    }
+
+    const orders = await Order.find(query)
       .populate(
         "customer",
         "name customerNumber street houseNumber postalCode city email mobileNumber latitude longitude"
@@ -956,7 +1006,7 @@ export const updateDeliverySequence = async (req: Request, res: Response) => {
     })
       .populate(
         "customer",
-        "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
+        "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude visitTimeRange"
       )
       .populate("items.item", "filterType length width depth unitOfMeasure")
       .populate(
@@ -1024,6 +1074,148 @@ export const generateImageUploadUrl = async (req: Request, res: Response) => {
     });
   } catch (error) {
     handleError(error, res, "Error generating upload URL");
+  }
+};
+
+export const updateOrderArticleNumber = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const { articleNumber } = req.body;
+
+    // Validate order exists
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Store old value for audit
+    const oldArticleNumber = order.articleNumber;
+
+    // Update the article number
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      { 
+        articleNumber: articleNumber?.trim() || null,
+        lastUpdated: new Date()
+      },
+      { new: true }
+    ).populate(
+      "customer",
+      "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
+    ).populate("items.item", "filterType length width depth unitOfMeasure");
+
+    if (!updatedOrder) {
+      return res.status(404).json({
+        error: "Order not found",
+        message: "Order not found",
+      });
+    }
+
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      const changes = AuditService.compareObjects(
+        { articleNumber: oldArticleNumber }, 
+        { articleNumber: updatedOrder.articleNumber }
+      );
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.UPDATE,
+          'orders',
+          (updatedOrder._id as any).toString(),
+          changes,
+          req
+        )
+      );
+    }
+
+    res.json({
+      message: "Order article number updated successfully",
+      order: updatedOrder,
+    });
+  } catch (error) {
+    handleError(error, res, "Error updating order article number");
+  }
+};
+
+export const updateOrderAssignedDriver = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const { assignedDriver } = req.body;
+
+    // Validate order exists
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    // Validate driver exists if provided
+    if (assignedDriver) {
+      const driver = await Driver.findById(assignedDriver);
+      if (!driver) {
+        return res.status(404).json({ error: "Driver not found" });
+      }
+    }
+
+    // Store old value for audit
+    const oldAssignedDriver = order.assignedDriver;
+
+    // Update the assigned driver
+    const updatedOrder = await Order.findByIdAndUpdate(
+      orderId,
+      { 
+        assignedDriver: assignedDriver || null,
+        lastUpdated: new Date()
+      },
+      { new: true }
+    ).populate(
+      "customer",
+      "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude visitTimeRange"
+    ).populate("items.item", "filterType length width depth unitOfMeasure")
+    .populate(
+      "assignedDriver",
+      "name street houseNumber postalCode city driverNumber email mobileNumber"
+    );
+
+    if (!updatedOrder) {
+      return res.status(404).json({
+        error: "Order not found",
+        message: "Order not found",
+      });
+    }
+
+    // Get current user details for audit
+    const currentUser = await User.findById(req.user?.userId);
+    
+    // Log audit trail
+    if (req.user?.userId) {
+      const changes = AuditService.compareObjects(
+        { assignedDriver: oldAssignedDriver }, 
+        { assignedDriver: updatedOrder.assignedDriver }
+      );
+      await AuditService.logChange(
+        AuditService.createAuditLogData(
+          req.user.userId as string,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : 'Unknown User',
+          AuditAction.UPDATE,
+          'orders',
+          (updatedOrder._id as any).toString(),
+          changes,
+          req
+        )
+      );
+    }
+
+    res.json({
+      message: "Order assigned driver updated successfully",
+      order: updatedOrder,
+    });
+  } catch (error) {
+    handleError(error, res, "Error updating order assigned driver");
   }
 };
 
@@ -1105,7 +1297,7 @@ export const updateOrderImages = async (req: Request, res: Response) => {
       { new: true }
     ).populate(
       "customer",
-      "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude"
+      "customerNumber name street houseNumber postalCode city email mobileNumber latitude longitude visitTimeRange"
     ).populate("items.item", "filterType length width depth unitOfMeasure");
 
     // Get current user details for audit
